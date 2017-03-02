@@ -27,7 +27,7 @@ def netfifo_rcv_open(port,bufsize):
 
     return fd_list.index(socket_object)
     
-#reading from fifo. Return data.
+#reading from pipe. Return data.
 def netfifo_read(fd,size):
     
     sock = fd_list[fd]
@@ -43,7 +43,32 @@ def netfifo_rcv_close(fd):
 
     sock.Close()
 
-##testing !
-fd = netfifo_rcv_open(10000,10)
-print netfifo_read(fd,1024)
-netfifo_rcv_close(fd)
+#Open writing side of pipe. Return a positive integer as file discriptor
+def netfifo_snd_open(host,port,bufsize):
+
+    #initial buffer
+    global buffer_size
+    buffer_size = bufsize
+
+    #create Server object (writing side)
+    socket_object = SocketClient(socket.AF_INET,socket.SOCK_DGRAM,1)
+    socket_object.Connect(host,port)
+
+    fd_list.append(socket_object)
+
+    return fd_list.index(socket_object)
+
+#writing data in pipe
+def netfifo_write(fd,buf,size):
+
+    sock = fd_list[fd]
+
+    sock.Send(buf)
+
+#close writing side
+def netfifo_snd_close(fd):
+
+    sock = fd_list[fd]
+
+    sock.Close()
+
