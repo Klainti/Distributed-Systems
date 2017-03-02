@@ -17,28 +17,32 @@ class SocketError(Exception):
 
 class Socket:
 
-    def __init__(self,host,port,verbose):
-        self.host=host
-        self.port=port
+    def __init__(self,family,socket_type,verbose):
         self.SocketError=SocketError()
         self.verbose=verbose
 
         try:
             if self.verbose:print 'SocketUtils:Creating Socket()'
-            self.sock=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            self.sock=socket.socket(family,socket_type)
         except socket.error,msg:
             raise SocketError,'Error in Socket Object Creation!!'
+ 
+    def Close(self):
+        if self.verbose:print 'SocketUtils:Closing socket!!'
+        self.sock.close()
+        if self.verbose:print 'SocketUtils:Socket Closed!!'
+  
 
     def __str__(self):
         return 'SocketUtils.Socket\nSocket created on Host='+str(self.host)+',Port='+str(self.port)
     
 class SocketServer(Socket):
 
-    def __init__(self,host,port,verbose):
-        Socket.__init__(self,host,port,verbose)
-        self.rport = port
-        self.rhost = host
-       
+    def __init__(self,family,socket_type,host,port,verbose):
+        Socket.__init__(self,family,socket_type,verbose)
+        self.host= host
+        self.port= port
+
         try:
             if self.verbose:print 'SocketUtils:Binding Socket()'
             self.sock.bind((self.host,self.port))
@@ -50,11 +54,11 @@ class SocketServer(Socket):
     def Listen(self,msg='Accepted Connection from:'):
         if self.verbose:print 'Listening to port',self.port
         self.sock.listen(1)
-        self.conn,self.rhost=self.sock.accept()
-        self.rhost=self.rhost[0]
-        if self.rhost:
-            if self.verbose:print 'Got connection from',self.rhost
-            print msg,self.rhost
+        self.conn,self.addr = self.sock.accept()
+        self.addr = self.addr[0]
+        if self.addr:
+            if self.verbose:print 'Got connection from',self.addr
+            print msg,self.addr
 
     def Send(self,data):
         if self.verbose:print 'Sending data of size ',len(data)
@@ -64,17 +68,11 @@ class SocketServer(Socket):
     def Receive(self,size):
         if self.verbose:print 'Receiving data...'
         return self.conn.recv(size)
-  
-    def Close(self):
-        if self.verbose:print 'SocketUtils:Closing socket!!'
-        self.sock.close()
-        if self.verbose:print 'SocketUtils:Socket Closed!!'
-  
-
+ 
 class SocketClient(Socket):
 
-    def __init__(self,host,port,verbose):
-        Socket.__init__(self,host,port,verbose)
+    def __init__(self,family,socket_type,verbose):
+        Socket.__init__(self,family,socket_type,verbose)
 
     def Connect(self,rhost,rport):
         self.rhost,self.rport=rhost,rport
@@ -93,8 +91,3 @@ class SocketClient(Socket):
     def Receive(self,size):
         if self.verbose:print 'Receiving data...'
         return self.sock.recv(size)
-  
-    def Close(self):
-        if self.verbose:print 'SocketUtils:Closing socket!!'
-        self.sock.close()
-        if self.verbose:print 'SocketUtils:Socket Closed!!'
