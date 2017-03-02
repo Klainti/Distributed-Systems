@@ -8,5 +8,4 @@ Contributors:
 
 * [Klainti Bodurri](https://github.com/klainti) - kbontourri@gmail.com
 
-
-* @Panagiotis S. Chytas (email: chytas96@gmail.com)
+* [Panagiotis Chytas](https://github.com/PanagiotisChytas) - chytas96@gmail.com
