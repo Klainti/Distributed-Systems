@@ -68,6 +68,16 @@ class SocketServer(Socket):
     def Receive(self,size):
         if self.verbose:print 'Receiving data...'
         return self.conn.recv(size)
+
+    def ReceiveFrom(self,size):
+        if self.verbose:print 'Receiving data from...'
+        return self.sock.recvfrom(size)
+
+    def SendTo(self,data,addr):
+        if self.verbose:print 'Send data to' + str(addr)
+        self.sock.sendto(data,addr)
+
+
  
 class SocketClient(Socket):
 
@@ -91,3 +101,13 @@ class SocketClient(Socket):
     def Receive(self,size):
         if self.verbose:print 'Receiving data...'
         return self.sock.recv(size)
+
+    def ReceiveFrom(self,size):
+        if self.verbose:print 'Receiving data from...'
+        return self.sock.recvfrom(size)
+
+    def SendTo(self,data,host,port):
+        if self.verbose:print 'Send data to' + str(host)
+        self.sock.sendto(data,(host,port))
+
+
