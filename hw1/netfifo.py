@@ -8,10 +8,29 @@ sys.path.append('../sockets/')
 
 from MySocket_library import *
 import socket
+import struct
 
 #Globals variables!
 fd_list = []
 buffer_size = 0
+
+
+#create a packet ACK or Data
+"""
+    encode: ! -> network( = big endian)
+            h -> short integer
+            q -> long long integer
+            s -> string
+"""
+
+def construct_packet(ack_or_data,number_of_packet,payload):
+    
+    return struct.pack('!hq10s', ack_or_data,number_of_packet,payload)
+
+#deconstruct packet
+def deconstruct_packet(packet):
+
+    return struct.unpack('!hq10s',packet)
 
 #Open reading side of pipe. Return a positive integer as file discriptor 
 def netfifo_rcv_open(port,bufsize):
@@ -32,8 +51,15 @@ def netfifo_read(fd,size):
     
     sock = fd_list[fd]
 
-    #read data
-    return sock.ReceiveFrom(size)[0]
+    #read data and unpack
+    data = deconstruct_packet(sock.ReceiveFrom(size)[0])
+
+    #data[0] = ack or data,data[1] = number of packet,data[2] = payload
+    #check the packet, payload = 1
+    if (data[0]==1):
+        return data[2]
+    else:
+        return (data[1])
 
 
 #close reading side
@@ -63,7 +89,9 @@ def netfifo_write(fd,buf,size):
 
     sock = fd_list[fd]
 
-    sock.Send(buf)
+    packet = construct_packet(1,1,buf)
+
+    sock.Send(packet)
 
 #close writing side
 def netfifo_snd_close(fd):
