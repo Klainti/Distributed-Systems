@@ -6,6 +6,8 @@ from MySocket_library import *
 import socket
 from netfifo import *
 ##testing !
-fd = netfifo_rcv_open(10000,10)
+port = 10000
+fd = netfifo_rcv_open(port,10)
+print netfifo_read(fd,1024)
 print netfifo_read(fd,1024)
 netfifo_rcv_close(fd)
