@@ -13,21 +13,18 @@ import socket
 import struct
 
 import thread
-import threading
 
 fd_list = []
-rcv_buffer_size = 0
-#buffer (dictionary [key: payload])
-rcv_buf = {}
+
 
 ################################# RCV ################################# 
 #mutex for app. If the packet it requests isnt in the buffer app_wait = 1 and app_wait_mtx.acquire()
-rcv_app_wait_mtx = threading.Lock()
+rcv_app_wait_mtx = thread.allocate_lock()
 rcv_app_wait_mtx.acquire()
 rcv_app_wait = 0
 
 #mutex for sychronization between thread and app
-rcv_thread_app_mtx = threading.Lock()
+rcv_thread_app_mtx = thread.allocate_lock()
 
 #next packet app wants to read from buffer (starts from 1)
 rcv_next_app_read = 1
@@ -35,25 +32,37 @@ rcv_next_app_read = 1
 rcv_next_waiting = 1
 #number of packets in buffer
 rcv_in_buffer = 0
+#buffer (dictionary [key: payload])
+rcv_buf = {}
+
+rcv_buffer_size = 0
 ################################# RCV #################################
 
 
 
 ################################# SEND ################################# 
 #mutex for app. If the packet it requests isnt in the buffer app_wait = 1 and app_wait_mtx.acquire()
-snd_app_wait_mtx = threading.Lock()
+snd_app_wait_mtx = thread.allocate_lock()
 snd_app_wait_mtx.acquire()
 snd_app_wait = 0
 
+snd_thread_wait_mtx = thread.allocate_lock()
+snd_thread_wait_mtx.acquire()
+snd_thread_wait = 0
+
 #mutex for sychronization between thread and app
-snd_thread_app_mtx = threading.Lock()
+snd_thread_app_mtx = thread.allocate_lock()
 
 #next packet app wants to read from buffer (starts from 1)
-snd_next_app_read = 1
+snd_next_app_write = 1
 #next packet thread wants to read from socket (starts from 1)
-snd_next_waiting = 1
+snd_next_sending = 1
 #number of packets in buffer
 snd_in_buffer = 0
+#buffer (dictionary [key: payload])
+snd_buf = {}
+
+snd_buffer_size = 0
 ################################# SEND #################################
 
 
@@ -72,19 +81,16 @@ def rcv_thread (sock):
 		
 		unlock = True
 		
-		print "Thread waits"
+		print "Rcv_thread waits"
 		
 		
 		#wait for next packet
 		data = deconstruct_packet(sock.ReceiveFrom(PACKET_SIZE)[0])
 		
 		
-		print "Thread:", data
+		print "Rcv_thread: got", data
 		
 		rcv_thread_app_mtx.acquire()
-		
-		
-		print data[1], rcv_next_waiting, rcv_in_buffer, rcv_buffer_size
 		
 		#if it isnt the next packet or buffer is full throw it 
 		#else update buffer
@@ -92,7 +98,7 @@ def rcv_thread (sock):
 			rcv_buf.update( {rcv_next_waiting: data[2]} )
 			rcv_next_waiting += 1
 			rcv_in_buffer += 1
-			print "Thread: Received packet" ,data[1] , rcv_in_buffer, "/", rcv_buffer_size
+			print "Rcv_thread: Received packet" ,data[1] , "(in:", rcv_in_buffer, ")"
 		
 		
 			#if app waits give it priority
@@ -105,7 +111,37 @@ def rcv_thread (sock):
 
 
 
-
+def snd_thread (sock):
+	
+	global snd_next_sending
+	global snd_in_buffer
+	global snd_app_wait
+	global snd_thread_wait
+	
+	while (True):
+		
+		print "Snd_thread ready"
+		
+		snd_thread_app_mtx.acquire()
+		
+		if (snd_in_buffer == 0):
+			print "Snd_thread: Wait for new packet"
+			snd_thread_app_mtx.release()
+			snd_thread_wait = 1
+			snd_thread_wait_mtx.acquire()
+			snd_thread_wait = 0
+	
+		print "Snd_thread: Sending packet", snd_next_sending
+		
+		sock.Send(snd_buf[snd_next_sending])
+		snd_next_sending += 1
+		del snd_buf[snd_next_sending-1]
+		snd_in_buffer -= 1
+		
+		if (snd_app_wait == 1):
+			snd_app_wait_mtx.release()
+		else:
+			snd_thread_app_mtx.release()
 
 
 
@@ -152,8 +188,6 @@ def netfifo_rcv_open(port,bufsize):
     thread.start_new_thread (rcv_thread, (socket_object, ))
 
     fd_list.append(socket_object)
-
-
 
     return fd_list.index(socket_object)
     
@@ -214,27 +248,57 @@ def netfifo_rcv_close(fd):
 def netfifo_snd_open(host,port,bufsize):
 
     #initial buffer
-    global buffer_size
-    buffer_size = bufsize
-
-
+    global snd_buffer_size
+    snd_buffer_size = bufsize
 
     #create Server object (writing side)
     socket_object = SocketClient(socket.AF_INET,socket.SOCK_DGRAM,1)
     socket_object.Connect(host,port)
 
+    #start the snd_thread
+    thread.start_new_thread (snd_thread, (socket_object, ))
+
     fd_list.append(socket_object)
 
     return fd_list.index(socket_object)
 
+
 #writing data in pipe
 def netfifo_write(fd,buf,size):
 
-    sock = fd_list[fd]
+    global snd_next_app_write
+    global snd_in_buffer
+    global snd_thread_wait
+    global snd_buffer_size
+    global snd_app_wait
+    
+    packet = construct_packet(1, snd_next_app_write, buf)
+    
+    snd_thread_app_mtx.acquire()
+    
+    print "App tries to add packet", snd_next_app_write
+    
+    if (snd_in_buffer == snd_buffer_size):
+		print "App waits for empty position"
+		snd_app_wait = 1
+		snd_thread_app_mtx.release()
+		snd_app_wait_mtx.acquire()
 
-    packet = construct_packet(1,1,buf)
 
-    sock.Send(packet)
+    snd_buf.update ({snd_next_app_write: packet})
+
+    snd_next_app_write += 1
+    snd_in_buffer += 1
+
+    print "App added packet", snd_next_app_write-1,"(in:", snd_in_buffer, ")"
+
+    if (snd_thread_wait == 1):
+		snd_thread_wait_mtx.release()
+    else:
+		snd_thread_app_mtx.release()
+
+
+
 
 #close writing side
 def netfifo_snd_close(fd):
