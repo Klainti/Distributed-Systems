@@ -7,7 +7,7 @@ import socket
 from netfifo import *
 ##testing !
 port = 10000
-fd = netfifo_rcv_open(port,6)
+fd = netfifo_rcv_open(port,3)
 for _ in range(0,5):
     print netfifo_read(fd,1024)
 
