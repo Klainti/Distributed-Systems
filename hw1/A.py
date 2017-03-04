@@ -13,11 +13,10 @@ import socket
 host = 'ThinkPad-Edge-E540'
 port = 10000
 
-fd = netfifo_snd_open(Hostname(),port,6)
+fd = netfifo_snd_open(Hostname(),port,2)
 for _ in range(0,5):
     netfifo_write(fd,"Hello World",11)
 
-while(1):
-    pass
+time.sleep(10)
 netfifo_snd_close(fd)
 
