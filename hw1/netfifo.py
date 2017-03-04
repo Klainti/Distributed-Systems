@@ -4,6 +4,22 @@
 
 PACKET_SIZE = 20
 
+"""
+    data packet encode: ! -> network
+                        q -> long long integer (number of packet)
+                        10s -> string (payload=Data)
+
+    ACK packet encode: ! -> network
+                       q -> long long integer (number of packet)
+                       3s -> string (payload=ACK)
+
+"""
+DATA_ENCODE = '!q10s'
+ACK_ENCODE = '!q3s'
+
+NPACKET_INDEX = 0
+PAYLOAD_INDEX = 1
+
 import sys
 #the socket dir contains MySocket_library.py
 sys.path.append('../sockets/')
@@ -23,7 +39,7 @@ rcv_app_wait_mtx = thread.allocate_lock()
 rcv_app_wait_mtx.acquire()
 rcv_app_wait = 0
 
-#mutex for sychronization between thread and app
+#mutex for sychronization between receiving thread and app
 rcv_thread_app_mtx = thread.allocate_lock()
 
 #next packet app wants to read from buffer (starts from 1)
@@ -41,7 +57,7 @@ rcv_buffer_size = 0
 
 
 ################################# SEND ################################# 
-#mutex for app. If the packet it requests isnt in the buffer app_wait = 1 and app_wait_mtx.acquire()
+#mutex for app. If buffer full, app_wait = 1 and app_wait_mtx.acquire()
 snd_app_wait_mtx = thread.allocate_lock()
 snd_app_wait_mtx.acquire()
 snd_app_wait = 0
@@ -50,7 +66,7 @@ snd_thread_wait_mtx = thread.allocate_lock()
 snd_thread_wait_mtx.acquire()
 snd_thread_wait = 0
 
-#mutex for sychronization between thread and app
+#mutex for sychronization between sending thread and app
 snd_thread_app_mtx = thread.allocate_lock()
 
 #next packet app wants to read from buffer (starts from 1)
@@ -64,10 +80,6 @@ snd_buf = {}
 
 snd_buffer_size = 0
 ################################# SEND #################################
-
-
-
-
 
 #thread code
 def rcv_thread (sock):
@@ -85,7 +97,9 @@ def rcv_thread (sock):
 		
 		
 		#wait for next packet
-		data = deconstruct_packet(sock.ReceiveFrom(PACKET_SIZE)[0])
+                return_packet = sock.ReceiveFrom(PACKET_SIZE)
+		data = deconstruct_packet(DATA_ENCODE,return_packet[0])
+                addr = return_packet[1]
 		
 		
 		print "Rcv_thread: got", data
@@ -94,13 +108,18 @@ def rcv_thread (sock):
 		
 		#if it isnt the next packet or buffer is full throw it 
 		#else update buffer
-		if (data[1] == rcv_next_waiting and rcv_in_buffer < rcv_buffer_size):
-			rcv_buf.update( {rcv_next_waiting: data[2]} )
+		if (data[NPACKET_INDEX] == rcv_next_waiting and rcv_in_buffer < rcv_buffer_size):
+			rcv_buf.update( {rcv_next_waiting: data[PAYLOAD_INDEX]} )
 			rcv_next_waiting += 1
 			rcv_in_buffer += 1
-			print "Rcv_thread: Received packet" ,data[1] , "(in:", rcv_in_buffer, ")"
+			print "Rcv_thread: Received packet" ,data[NPACKET_INDEX] , "(in:", rcv_in_buffer, ")"
 		
-		
+	                #packet received, send ACK for that
+                        ack_packet = construct_packet(ACK_ENCODE,rcv_next_waiting,'ACK')
+                        sock.SendTo(ack_packet,addr)
+                        print "ACK with seq number: ", rcv_next_waiting , " done"
+
+
 			#if app waits give it priority
 			if (rcv_app_wait and rcv_next_app_read < rcv_next_waiting):
 				rcv_app_wait_mtx.release()
@@ -134,44 +153,34 @@ def snd_thread (sock):
 		print "Snd_thread: Sending packet", snd_next_sending
 		
 		sock.Send(snd_buf[snd_next_sending])
-		snd_next_sending += 1
-		del snd_buf[snd_next_sending-1]
-		snd_in_buffer -= 1
-		
-		if (snd_app_wait == 1):
-			snd_app_wait_mtx.release()
-		else:
-			snd_thread_app_mtx.release()
+
+                #wait for ack
+                ack = deconstruct_packet(ACK_ENCODE,sock.ReceiveFrom(PACKET_SIZE)[0])
+                print "sdn_thread take ack: ", ack
+
+                #packet delivered! go for next 
+                if (ack[NPACKET_INDEX]==snd_next_sending+1 and ack[PAYLOAD_INDEX]=='ACK'):
+		    snd_next_sending += 1
+		    del snd_buf[snd_next_sending-1]
+		    snd_in_buffer -= 1
+		 
+		    if (snd_app_wait == 1):
+			    snd_app_wait_mtx.release()
+		    else:
+			    snd_thread_app_mtx.release()
+                else:
+                    snd_thread_app_mtx.release() #try again for same packet
 
 
 
-
-
-
-#create a packet ACK or Data
-"""
-    encode: ! -> network( = big endian)
-            h -> short integer
-            q -> long long integer
-            s -> string
-"""
-
-def construct_packet(ack_or_data,number_of_packet,payload):
+#create packet 
+def construct_packet(encode,number_of_packet,payload):
     
-    return struct.pack('!hq10s', ack_or_data,number_of_packet,payload)
+    return struct.pack(encode,number_of_packet,payload)
 
-#deconstruct packet
-def deconstruct_packet(packet):
+def deconstruct_packet(decode,packet):
 
-    return struct.unpack('!hq10s',packet)
-
-
-
-
-
-
-
-
+    return struct.unpack(decode,packet)
 
 
 #Open reading side of pipe. Return a positive integer as file discriptor 
@@ -229,21 +238,6 @@ def netfifo_rcv_close(fd):
     sock.Close()
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 #Open writing side of pipe. Return a positive integer as file discriptor
 def netfifo_snd_open(host,port,bufsize):
 
@@ -252,7 +246,7 @@ def netfifo_snd_open(host,port,bufsize):
     snd_buffer_size = bufsize
 
     #create Server object (writing side)
-    socket_object = SocketClient(socket.AF_INET,socket.SOCK_DGRAM,1)
+    socket_object = SocketClient(socket.AF_INET,socket.SOCK_DGRAM,0)
     socket_object.Connect(host,port)
 
     #start the snd_thread
@@ -272,7 +266,7 @@ def netfifo_write(fd,buf,size):
     global snd_buffer_size
     global snd_app_wait
     
-    packet = construct_packet(1, snd_next_app_write, buf)
+    packet = construct_packet(DATA_ENCODE,snd_next_app_write, buf)
     
     snd_thread_app_mtx.acquire()
     
