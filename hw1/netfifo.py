@@ -113,11 +113,11 @@ def rcv_thread (sock):
 			rcv_next_waiting += 1
 			rcv_in_buffer += 1
 			print "Rcv_thread: Received packet" ,data[NPACKET_INDEX] , "(in:", rcv_in_buffer, ")"
-		
-	                #packet received, send ACK for that
-                        ack_packet = construct_packet(ACK_ENCODE,rcv_next_waiting,'ACK')
-                        sock.SendTo(ack_packet,addr)
-                        print "ACK with seq number: ", rcv_next_waiting , " done"
+			
+			#packet received, send ACK for that
+			ack_packet = construct_packet(ACK_ENCODE,rcv_next_waiting-1,'ACK')
+			sock.SendTo(ack_packet,addr)
+			print "Rcv_thread: Send ACK with seq number: ", rcv_next_waiting-1 
 
 
 			#if app waits give it priority
@@ -156,10 +156,10 @@ def snd_thread (sock):
 
                 #wait for ack
                 ack = deconstruct_packet(ACK_ENCODE,sock.ReceiveFrom(PACKET_SIZE)[0])
-                print "sdn_thread take ack: ", ack
+                print "Snd_thread: Take ack: ", ack
 
                 #packet delivered! go for next 
-                if (ack[NPACKET_INDEX]==snd_next_sending+1 and ack[PAYLOAD_INDEX]=='ACK'):
+                if (ack[NPACKET_INDEX]==snd_next_sending and ack[PAYLOAD_INDEX]=='ACK'):
 		    snd_next_sending += 1
 		    del snd_buf[snd_next_sending-1]
 		    snd_in_buffer -= 1
@@ -277,6 +277,7 @@ def netfifo_write(fd,buf,size):
 		snd_app_wait = 1
 		snd_thread_app_mtx.release()
 		snd_app_wait_mtx.acquire()
+		snd_app_wait = 0
 
 
     snd_buf.update ({snd_next_app_write: packet})
