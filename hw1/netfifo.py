@@ -88,6 +88,31 @@ snd_buf = {}
 snd_buffer_size = 0
 ################################# SEND #################################
 
+#receive packet with timeout!
+def packet_receive(sock,size_of_packet,size_of_payload,decode):
+
+    	#wait for next packet
+        while(True):
+            try: 
+                return_packet = sock.ReceiveFrom(size_of_packet)
+                data = deconstruct_packet(decode,return_packet[0])
+                addr = return_packet[1]
+                
+                if (len(data[PAYLOAD_INDEX])!=size_of_payload):
+                    raise socket.timeout
+                else:
+                    print 'DATA/ACK packet receive successful'
+                    break
+            except socket.timeout:
+                    print 'Try again to receive packet'
+                    #try again to receive!
+                    pass
+
+        return (data,addr)
+
+
+
+
 #thread code
 def rcv_thread (sock):
 	
@@ -102,26 +127,8 @@ def rcv_thread (sock):
 		
 		print "Rcv_thread waits"
 		
-		
-		#wait for next packet
-                while(True):
-                    try: 
-                        return_packet = sock.ReceiveFrom(DATA_PACKET_SIZE)
-                        data = deconstruct_packet(DATA_ENCODE,return_packet[0])
-                        addr = return_packet[1]
-
-                        if (len(data[PAYLOAD_INDEX])!=DATA_PAYLOAD_SIZE):
-                            raise socket.timeout
-                        else:
-                            print 'Data packet receive successful'
-                            break
-                    except socket.timeout:
-                        print 'Try again to receive data packet'
-                        #try again to receive!
-                        pass
-
-				
-		
+	        data, addr = packet_receive(sock,DATA_PACKET_SIZE,DATA_PAYLOAD_SIZE,DATA_ENCODE)	
+					
 		print "Rcv_thread: got", data
 		
 		rcv_thread_app_mtx.acquire()
@@ -174,23 +181,8 @@ def snd_thread (sock):
 		
 		sock.Send(snd_buf[snd_next_sending])
 
-                #wait for ack!!
-                while(1):
-                    try: 
-                        return_packet = sock.ReceiveFrom(ACK_PACKET_SIZE)
-                        ack = deconstruct_packet(ACK_ENCODE,return_packet[0])
-
-                        if (len(ack[PAYLOAD_INDEX])!=ACK_PAYLOAD_SIZE):
-                            raise socket.timeout
-                        else:
-                            print 'ACK received successful'
-                            break
-                    except socket.timeout:
-                        print 'try again to receive ACK'
-                        #try again to receive!
-                        pass
-
-
+                
+                ack = packet_receive(sock,ACK_PACKET_SIZE,ACK_PAYLOAD_SIZE,ACK_ENCODE)[0]
                 print "Snd_thread: Take ack: ", ack
 
                 #packet delivered! go for next 
