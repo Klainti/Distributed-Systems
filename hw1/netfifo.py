@@ -2,7 +2,11 @@
     API for FIFO pipe with UDP/IP connection
 """
 
-PACKET_SIZE = 20
+DATA_PACKET_SIZE = 20
+ACK_PACKET_SIZE = 11
+
+DATA_PAYLOAD_SIZE = 10
+ACK_PAYLOAD_SIZE = 3
 
 """
     data packet encode: ! -> network
@@ -19,6 +23,9 @@ ACK_ENCODE = '!q3s'
 
 NPACKET_INDEX = 0
 PAYLOAD_INDEX = 1
+
+#waiting time (float) to receive a packet! (in seconds)
+TIMEOUT = 0.00001
 
 import sys
 #the socket dir contains MySocket_library.py
@@ -97,10 +104,23 @@ def rcv_thread (sock):
 		
 		
 		#wait for next packet
-                return_packet = sock.ReceiveFrom(PACKET_SIZE)
-		data = deconstruct_packet(DATA_ENCODE,return_packet[0])
-                addr = return_packet[1]
-		
+                while(True):
+                    try: 
+                        return_packet = sock.ReceiveFrom(DATA_PACKET_SIZE)
+                        data = deconstruct_packet(DATA_ENCODE,return_packet[0])
+                        addr = return_packet[1]
+
+                        if (len(data[PAYLOAD_INDEX])!=DATA_PAYLOAD_SIZE):
+                            raise socket.timeout
+                        else:
+                            print 'Data packet receive successful'
+                            break
+                    except socket.timeout:
+                        print 'Try again to receive data packet'
+                        #try again to receive!
+                        pass
+
+				
 		
 		print "Rcv_thread: got", data
 		
@@ -154,8 +174,23 @@ def snd_thread (sock):
 		
 		sock.Send(snd_buf[snd_next_sending])
 
-                #wait for ack
-                ack = deconstruct_packet(ACK_ENCODE,sock.ReceiveFrom(PACKET_SIZE)[0])
+                #wait for ack!!
+                while(1):
+                    try: 
+                        return_packet = sock.ReceiveFrom(ACK_PACKET_SIZE)
+                        ack = deconstruct_packet(ACK_ENCODE,return_packet[0])
+
+                        if (len(ack[PAYLOAD_INDEX])!=ACK_PAYLOAD_SIZE):
+                            raise socket.timeout
+                        else:
+                            print 'ACK received successful'
+                            break
+                    except socket.timeout:
+                        print 'try again to receive ACK'
+                        #try again to receive!
+                        pass
+
+
                 print "Snd_thread: Take ack: ", ack
 
                 #packet delivered! go for next 
@@ -191,7 +226,7 @@ def netfifo_rcv_open(port,bufsize):
     rcv_buffer_size = bufsize
 
     #create Server object (reading side)
-    socket_object = SocketServer(socket.AF_INET,socket.SOCK_DGRAM,Hostname(),port,0)
+    socket_object = SocketServer(socket.AF_INET,socket.SOCK_DGRAM,TIMEOUT,Hostname(),port,0)
 
     #start the thread
     thread.start_new_thread (rcv_thread, (socket_object, ))
@@ -246,7 +281,7 @@ def netfifo_snd_open(host,port,bufsize):
     snd_buffer_size = bufsize
 
     #create Server object (writing side)
-    socket_object = SocketClient(socket.AF_INET,socket.SOCK_DGRAM,0)
+    socket_object = SocketClient(socket.AF_INET,socket.SOCK_DGRAM,TIMEOUT,0)
     socket_object.Connect(host,port)
 
     #start the snd_thread
