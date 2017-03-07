@@ -33,9 +33,8 @@ class LengthError(Exception):
 
 #Packets details
 DATA_PACKET_SIZE = 20
-ACK_PACKET_SIZE = 11
+ACK_PACKET_SIZE = 18
 DATA_PAYLOAD_SIZE = 10
-ACK_PAYLOAD_SIZE = 3
 
 """
     data packet encode: ! -> network
@@ -44,11 +43,11 @@ ACK_PAYLOAD_SIZE = 3
 
     ACK packet encode: ! -> network
                        q -> long long integer (number of packet)
-                       3s -> string (payload=ACK)
+                       q -> long long integer (empty spaces)
 """
 
 DATA_ENCODE = '!q10s'
-ACK_ENCODE = '!q3s'
+ACK_ENCODE = '!qq'
 
 NPACKET_INDEX = 0
 PAYLOAD_INDEX = 1
@@ -125,15 +124,19 @@ def packet_receive(sock, size_of_packet, size_of_payload, decode):
         #wait for next packet
         try:
             print "Wait packet_receive"
-            return_packet = sock.ReceiveFrom(size_of_packet)
-            data = deconstruct_packet(decode,return_packet[0])
+                return_packet = sock.ReceiveFrom(size_of_packet)
+
+            #In case the packet is broken deconstuct_packet returns LengthError
+            try:
+                data = deconstruct_packet(decode,return_packet[0])
+            except LengthError:
+                raise LengthError
+
             addr = return_packet[1]
 
-            if (len(data[PAYLOAD_INDEX])!=size_of_payload):
-                raise LengthError ("Half packet received")
-            else:
-                print 'DATA/ACK packet receive successful'
-                return (data,addr)
+            print 'DATA/ACK packet receive successful'
+            return (data,addr)
+
         except socket.timeout:
                 print 'Timeout. Packet not received'
                 raise TimeError ("Packet lost")
@@ -146,46 +149,50 @@ def packet_receive(sock, size_of_packet, size_of_payload, decode):
 #thread code
 def rcv_thread (sock):
 
+
     global rcv_next_waiting
     global rcv_next_app_read
     global rcv_in_buffer
     global rcv_buffer_size
 
+    num_of_packets = 1
+
     while (True):
 
-        unlock = True
+        for p in xrange (num_of_packets):
 
-        print "Rcv_thread waits"
-        data, addr = packet_receive(sock, DATA_PACKET_SIZE, DATA_PAYLOAD_SIZE, DATA_ENCODE)
-        print "Rcv_thread: got", data
+            print "Rcv_thread waits"
+            data, addr = packet_receive(sock, DATA_PACKET_SIZE, DATA_PAYLOAD_SIZE, DATA_ENCODE)
+            print "Rcv_thread: got", data
 
-        rcv_thread_app_mtx.acquire()
+            rcv_thread_app_mtx.acquire()
 
-        #if it isnt the next packet or buffer is full throw it
-        #else update buffer
-        if (data[NPACKET_INDEX] == rcv_next_waiting and rcv_in_buffer < rcv_buffer_size):
-            rcv_buf.update( {rcv_next_waiting: data[PAYLOAD_INDEX]} )
+            #Check if packet key is within window [rcv_next_waiting - rcv_next_waiting + num_of_packets]
+            if (data[NPACKET_INDEX] >= rcv_next_waiting and data[NPACKET_INDEX] <= rcv_next_waiting + num_of_packets):
+
+                #Not allowed duplicate packets
+                if (not rcv_buf.has_key(data[NPACKET_INDEX])):
+                    rcv_buf.update( {data[NPACKET_INDEX]: data[PAYLOAD_INDEX]} )
+
+                rcv_in_buffer += 1
+                print "Rcv_thread: Received packet" ,data[NPACKET_INDEX] , "(in:", rcv_in_buffer, ")"
+
+        #Find the first missing packet
+        while (rcv_buf.has_key(rcv_next_waiting)):
             rcv_next_waiting += 1
-            rcv_in_buffer += 1
-            print "Rcv_thread: Received packet" ,data[NPACKET_INDEX] , "(in:", rcv_in_buffer, ")"
 
-            #packet received, send ACK for that
-            ack_packet = construct_packet(ACK_ENCODE,rcv_next_waiting-1,'ACK')
-            sock.SendTo(ack_packet,addr)
-            print "Rcv_thread: Send ACK with seq number: ", rcv_next_waiting-1
-        #If sender send again the same packet because he didnt get ACK
-        elif (data[NPACKET_INDEX] < rcv_next_waiting):
-            print "Rcv_thread: Received packet" ,data[NPACKET_INDEX], "(Already had it)"
-            ack_packet = construct_packet(ACK_ENCODE,data[NPACKET_INDEX],'ACK')
-            sock.SendTo(ack_packet,addr)
-            print "Rcv_thread: Send ACK with seq number: ", data[NPACKET_INDEX]
 
-            #if app waits give it priority
+        num_of_packets = rcv_buffer_size - rcv_in_buffer
+        #send ACK for next num_of_packets packets
+        ack_packet = construct_packet(ACK_ENCODE, rcv_next_waiting, num_of_packets)
+        sock.SendTo(ack_packet,addr)
+        print "Rcv_thread: Send ACK with seq number: ", rcv_next_waiting, "and num_of_packets: ", num_of_packets
+
+
+        #if app waits give it priority
         if (rcv_app_wait and rcv_next_app_read < rcv_next_waiting):
             rcv_app_wait_mtx.release()
-            unlock = False
-
-        if (unlock):
+        else:
             rcv_thread_app_mtx.release()
 
 
@@ -223,7 +230,7 @@ def snd_thread (sock):
         try:
             ack = packet_receive(sock, ACK_PACKET_SIZE, ACK_PAYLOAD_SIZE, ACK_ENCODE)[0]
             print "Snd_thread: Take ack: ", ack
-        except TimeError:
+        except TimeError, LengthError:
             #ACK not received
             #try again for the same packet
             try_same = True
@@ -249,8 +256,10 @@ def construct_packet(encode,number_of_packet,payload):
     return struct.pack(encode,number_of_packet,payload)
 
 def deconstruct_packet(decode,packet):
-    return struct.unpack(decode,packet)
-
+    try:
+        return struct.unpack(decode,packet)
+    except struct.error:
+        raise LengthError
 
 #Open reading side of pipe. Return a positive integer as file discriptor
 def netfifo_rcv_open(port,bufsize):
@@ -260,7 +269,7 @@ def netfifo_rcv_open(port,bufsize):
     rcv_buffer_size = bufsize
 
     #create Server object (reading side)
-    socket_object = SocketServer(socket.AF_INET, socket.SOCK_DGRAM, None, Hostname(), port, 0)
+    socket_object = SocketServer(socket.AF_INET, socket.SOCK_DGRAM, TIMEOUT, Hostname(), port, 0)
 
     #start the thread
     thread.start_new_thread (rcv_thread, (socket_object, ))
