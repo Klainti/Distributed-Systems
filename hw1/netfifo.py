@@ -276,28 +276,33 @@ def netfifo_read(fd,size):
     global rcv_app_wait
     global rcv_in_buffer
 
-    print "App read: ..."
+    s = ""
 
-    #app wants to read packet next_app_read
-    rcv_thread_app_mtx.acquire()
-    if (rcv_next_app_read not in rcv_buf):
-        #if packet not in buf wait
-        print "App waits for packet " ,rcv_next_app_read
-        rcv_app_wait = 1
+    while (len(s) < size/DATA_PAYLOAD_SIZE * DATA_PAYLOAD_SIZE):
+
+        #app wants to read packet next_app_read
+        rcv_thread_app_mtx.acquire()
+        if (rcv_next_app_read not in rcv_buf):
+            #if packet not in buf wait
+            print "App waits for packet " ,rcv_next_app_read
+            rcv_app_wait = 1
+            rcv_thread_app_mtx.release()
+            rcv_app_wait_mtx.acquire()
+            rcv_app_wait = 0
+
+
+        d = rcv_buf[rcv_next_app_read]
+        rcv_next_app_read += 1
+        rcv_in_buffer -= 1
+        del rcv_buf[rcv_next_app_read-1]
+        print "App got packet", rcv_next_app_read-1
+
         rcv_thread_app_mtx.release()
-        rcv_app_wait_mtx.acquire()
-        rcv_app_wait = 0
 
+        s = s + d
+        print "App has till now: ", s
 
-    d = rcv_buf[rcv_next_app_read]
-    rcv_next_app_read += 1
-    rcv_in_buffer -= 1
-    del rcv_buf[rcv_next_app_read-1]
-    print "App got packet", rcv_next_app_read-1
-
-    rcv_thread_app_mtx.release()
-
-    return d
+    return s
 
 
 #close reading side
@@ -334,31 +339,32 @@ def netfifo_write(fd,buf,size):
     global snd_buffer_size
     global snd_app_wait
 
-    packet = construct_packet(DATA_ENCODE,snd_next_app_write, buf)
+    for s in xrange (0, size, DATA_PAYLOAD_SIZE):
 
-    snd_thread_app_mtx.acquire()
+        packet = construct_packet(DATA_ENCODE,snd_next_app_write, buf[s: s+ DATA_PAYLOAD_SIZE])
 
-    print "App tries to add packet", snd_next_app_write
+        snd_thread_app_mtx.acquire()
 
-    if (snd_in_buffer == snd_buffer_size):
-        print "App waits for empty position"
-        snd_app_wait = 1
-        snd_thread_app_mtx.release()
-        snd_app_wait_mtx.acquire()
-        snd_app_wait = 0
+        print "App tries to add packet", snd_next_app_write
 
+        if (snd_in_buffer == snd_buffer_size):
+            print "App waits for empty position"
+            snd_app_wait = 1
+            snd_thread_app_mtx.release()
+            snd_app_wait_mtx.acquire()
+            snd_app_wait = 0
 
-    snd_buf.update ({snd_next_app_write: packet})
+        snd_buf.update ({snd_next_app_write: packet})
 
-    snd_next_app_write += 1
-    snd_in_buffer += 1
+        snd_next_app_write += 1
+        snd_in_buffer += 1
 
-    print "App added packet", snd_next_app_write-1,"(in:", snd_in_buffer, ")"
+        print "App added packet", snd_next_app_write-1,"(in:", snd_in_buffer, ")"
 
-    if (snd_thread_wait == 1):
-        snd_thread_wait_mtx.release()
-    else:
-        snd_thread_app_mtx.release()
+        if (snd_thread_wait == 1):
+            snd_thread_wait_mtx.release()
+        else:
+            snd_thread_app_mtx.release()
 
 
 
