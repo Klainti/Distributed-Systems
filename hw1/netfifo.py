@@ -33,7 +33,7 @@ class LengthError(Exception):
 
 #Packets details
 DATA_PACKET_SIZE = 20
-ACK_PACKET_SIZE = 18
+ACK_PACKET_SIZE = 16
 DATA_PAYLOAD_SIZE = 10
 
 """
@@ -119,12 +119,12 @@ snd_buffer_size = 0
 
 
 #receive packet with timeout!
-def packet_receive(sock, size_of_packet, size_of_payload, decode):
+def packet_receive(sock, size_of_packet, decode):
 
         #wait for next packet
         try:
             print "Wait packet_receive"
-                return_packet = sock.ReceiveFrom(size_of_packet)
+            return_packet = sock.ReceiveFrom(size_of_packet)
 
             #In case the packet is broken deconstuct_packet returns LengthError
             try:
@@ -157,18 +157,27 @@ def rcv_thread (sock):
 
     num_of_packets = 1
 
+
+
     while (True):
+
+        missed = 0
 
         for p in xrange (num_of_packets):
 
             print "Rcv_thread waits"
-            data, addr = packet_receive(sock, DATA_PACKET_SIZE, DATA_PAYLOAD_SIZE, DATA_ENCODE)
+            try:
+                data, addr = packet_receive(sock, DATA_PACKET_SIZE, DATA_ENCODE)
+            except:
+                missed += 1
+                continue
+
             print "Rcv_thread: got", data
 
             rcv_thread_app_mtx.acquire()
 
             #Check if packet key is within window [rcv_next_waiting - rcv_next_waiting + num_of_packets]
-            if (data[NPACKET_INDEX] >= rcv_next_waiting and data[NPACKET_INDEX] <= rcv_next_waiting + num_of_packets):
+            if (data[NPACKET_INDEX] >= rcv_next_waiting and data[NPACKET_INDEX] <= rcv_next_waiting + num_of_packets and data[NPACKET_INDEX]-rcv_next_waiting < rcv_buffer_size-rcv_in_buffer):
 
                 #Not allowed duplicate packets
                 if (not rcv_buf.has_key(data[NPACKET_INDEX])):
@@ -177,12 +186,19 @@ def rcv_thread (sock):
                 rcv_in_buffer += 1
                 print "Rcv_thread: Received packet" ,data[NPACKET_INDEX] , "(in:", rcv_in_buffer, ")"
 
+            rcv_thread_app_mtx.release()
+
+        if (missed == num_of_packets):
+            continue
+
+        rcv_thread_app_mtx.acquire()
+
         #Find the first missing packet
         while (rcv_buf.has_key(rcv_next_waiting)):
             rcv_next_waiting += 1
 
 
-        num_of_packets = rcv_buffer_size - rcv_in_buffer
+        num_of_packets = max(1, rcv_buffer_size - rcv_in_buffer)
         #send ACK for next num_of_packets packets
         ack_packet = construct_packet(ACK_ENCODE, rcv_next_waiting, num_of_packets)
         sock.SendTo(ack_packet,addr)
@@ -204,15 +220,16 @@ def snd_thread (sock):
     global snd_app_wait
     global snd_thread_wait
 
-
+    num_of_packets = 1
 
     while (True):
 
-        try_same = False
+        send_one = False
 
         print "Snd_thread ready"
 
         snd_thread_app_mtx.acquire()
+
 
         #Wait if buffer is empty
         if (snd_in_buffer == 0):
@@ -223,31 +240,38 @@ def snd_thread (sock):
             snd_thread_wait = 0
 
 
-        #Send next packet
-        print "Snd_thread: Sending packet", snd_next_sending
-        sock.Send(snd_buf[snd_next_sending])
+        #Send num_of_packets packets
+        for i in xrange (num_of_packets):
+            if (snd_buf.has_key(snd_next_sending+i)):
+                #Send next packet
+                print "Snd_thread: Sending packet", snd_next_sending+i
+                sock.Send(snd_buf[snd_next_sending+i])
+
+
+
         #Wait for ACK
         try:
-            ack = packet_receive(sock, ACK_PACKET_SIZE, ACK_PAYLOAD_SIZE, ACK_ENCODE)[0]
-            print "Snd_thread: Take ack: ", ack
+            ack = packet_receive(sock, ACK_PACKET_SIZE, ACK_ENCODE)[0]
+            print "Snd_thread: Take ack with seq_num: ", ack[0], "and empty_spaces: ", ack[1]
+
+            #Update buffer
+            for i in xrange (snd_next_sending, ack[0]):
+                del snd_buf[i]
+                snd_in_buffer -= 1
+
+            #Update variables
+            snd_next_sending = ack[0]
+            num_of_packets = ack[1]
+
         except TimeError, LengthError:
             #ACK not received
-            #try again for the same packet
-            try_same = True
+            #send only one packet
+            send_one = True
 
-
-        #packet delivered! go for next
-        if ( (not try_same) and ack[NPACKET_INDEX]==snd_next_sending and ack[PAYLOAD_INDEX]=='ACK'):
-            snd_next_sending += 1
-            del snd_buf[snd_next_sending-1]
-            snd_in_buffer -= 1
-
-            if (snd_app_wait == 1):
-                snd_app_wait_mtx.release()
-            else:
-                snd_thread_app_mtx.release()
+        if (snd_app_wait == 1):
+            snd_app_wait_mtx.release()
         else:
-            snd_thread_app_mtx.release() #try again for same packet
+            snd_thread_app_mtx.release()
 
 
 
@@ -284,13 +308,15 @@ def netfifo_read(fd,size):
     global rcv_next_app_read
     global rcv_app_wait
     global rcv_in_buffer
+    global rcv_buffer_size
 
     s = ""
 
-    while (len(s) < size/DATA_PAYLOAD_SIZE * DATA_PAYLOAD_SIZE):
+    while (len(s) < min(rcv_buffer_size*DATA_PAYLOAD_SIZE, size/DATA_PAYLOAD_SIZE * DATA_PAYLOAD_SIZE)):
 
         #app wants to read packet next_app_read
         rcv_thread_app_mtx.acquire()
+
         if (rcv_next_app_read not in rcv_buf):
             #if packet not in buf wait
             print "App waits for packet " ,rcv_next_app_read
