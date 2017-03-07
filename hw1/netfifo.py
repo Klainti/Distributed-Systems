@@ -55,7 +55,7 @@ PAYLOAD_INDEX = 1
 
 
 #waiting time (float) to receive a packet! (in seconds)
-TIMEOUT = 0.0000001
+TIMEOUT = 1
 
 
 
@@ -181,9 +181,9 @@ def rcv_thread (sock):
             print "Rcv_thread: Send ACK with seq number: ", data[NPACKET_INDEX]
 
             #if app waits give it priority
-            if (rcv_app_wait and rcv_next_app_read < rcv_next_waiting):
-                rcv_app_wait_mtx.release()
-                unlock = False
+        if (rcv_app_wait and rcv_next_app_read < rcv_next_waiting):
+            rcv_app_wait_mtx.release()
+            unlock = False
 
         if (unlock):
             rcv_thread_app_mtx.release()
@@ -276,6 +276,7 @@ def netfifo_read(fd,size):
     global rcv_app_wait
     global rcv_in_buffer
 
+    print "App read: ..."
 
     #app wants to read packet next_app_read
     rcv_thread_app_mtx.acquire()
