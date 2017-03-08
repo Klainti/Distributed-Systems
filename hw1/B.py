@@ -8,9 +8,15 @@ import time
 
 ##testing !
 port = 10000
-fd = netfifo_rcv_open(port,2)
+fd = netfifo_rcv_open(port,10)
 
-s = netfifo_read(fd,30)
+fd_output = open('output.txt','w')
+
+s = netfifo_read(fd,1000)
+fd_output.write(s)
 print "Returned value:", s
+
+while(1):
+    pass
 
 netfifo_rcv_close(fd)
