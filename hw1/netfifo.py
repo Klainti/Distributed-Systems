@@ -5,11 +5,9 @@
 import sys
 #the socket dir contains MySocket_library.py
 sys.path.append('../sockets/')
-
 from MySocket_library import *
 import socket
 import struct
-
 import thread
 
 
@@ -63,7 +61,7 @@ TIMEOUT = 1
 
 fd_list = []
 
-################################# RCV #################################
+################################# <RCV> #################################
 #mutex for app. If the packet it requests isnt in the buffer app_wait = 1 and app_wait_mtx.acquire()
 rcv_app_wait_mtx = thread.allocate_lock()
 rcv_app_wait_mtx.acquire()
@@ -82,10 +80,10 @@ rcv_in_buffer = 0
 rcv_buf = {}
 
 rcv_buffer_size = 0
-################################# RCV #################################
+################################# </RCV> #################################
 
 
-################################# SEND #################################
+################################# <SEND> #################################
 #mutex for app. If buffer full, app_wait = 1 and app_wait_mtx.acquire()
 snd_app_wait_mtx = thread.allocate_lock()
 snd_app_wait_mtx.acquire()
@@ -108,7 +106,7 @@ snd_in_buffer = 0
 snd_buf = {}
 
 snd_buffer_size = 0
-################################# SEND #################################
+################################# </SEND> #################################
 
 
 
@@ -118,35 +116,44 @@ snd_buffer_size = 0
 
 
 
+############################ <PACKET FUNCTIONS> ############################
+def construct_packet(encode,number_of_packet,payload):
+    return struct.pack(encode,number_of_packet,payload)
+
+def deconstruct_packet(decode,packet):
+    try:
+        return struct.unpack(decode,packet)
+    except struct.error:
+        raise LengthError
+############################ </PACKET FUNCTIONS> ############################
+
+
+
+
+##################### <PRIVATE FUNCTION FOR THREADS> #####################
 #receive packet with timeout!
 def packet_receive(sock, size_of_packet, decode):
 
         #wait for next packet
         try:
-            print "Wait packet_receive"
             return_packet = sock.ReceiveFrom(size_of_packet)
 
             #In case the packet is broken deconstuct_packet returns LengthError
             try:
                 data = deconstruct_packet(decode,return_packet[0])
             except LengthError:
-                raise LengthError
+                raise LengthError ("Received broken packet")
 
             addr = return_packet[1]
-
-            print 'DATA/ACK packet receive successful'
             return (data,addr)
 
         except socket.timeout:
-                print 'Timeout. Packet not received'
                 raise TimeError ("Packet lost")
+##################### </PRIVATE FUNCTION FOR THREADS> #####################
 
 
 
-
-
-
-#thread code
+############################ <THREADS CODE> ############################
 def rcv_thread (sock):
 
 
@@ -165,18 +172,17 @@ def rcv_thread (sock):
 
         for p in xrange (num_of_packets):
 
-            print "Rcv_thread waits"
             try:
                 data, addr = packet_receive(sock, DATA_PACKET_SIZE, DATA_ENCODE)
             except:
                 missed += 1
                 continue
 
-            print "Rcv_thread: got", data
+            print "RCV_THREAD: got", data
 
             rcv_thread_app_mtx.acquire()
 
-            #Check if packet key is within window [rcv_next_waiting - rcv_next_waiting + num_of_packets]
+            #Check if packet key is within window [rcv_next_waiting - rcv_next_waiting + num_of_packets] and buffer has empty space in order to save its
             if (data[NPACKET_INDEX] >= rcv_next_waiting and data[NPACKET_INDEX] <= rcv_next_waiting + num_of_packets and data[NPACKET_INDEX]-rcv_next_waiting < rcv_buffer_size-rcv_in_buffer):
 
                 #Not allowed duplicate packets
@@ -190,6 +196,8 @@ def rcv_thread (sock):
 
             rcv_thread_app_mtx.release()
 
+
+        #Not a single packet received
         if (missed == num_of_packets):
             continue
 
@@ -199,12 +207,14 @@ def rcv_thread (sock):
         while (rcv_buf.has_key(rcv_next_waiting)):
             rcv_next_waiting += 1
 
-
+        #In case buffer is full we send 1 empty space instead of 0
         num_of_packets = max(1, rcv_buffer_size - rcv_in_buffer)
+
         #send ACK for next num_of_packets packets
         ack_packet = construct_packet(ACK_ENCODE, rcv_next_waiting, num_of_packets)
         sock.SendTo(ack_packet,addr)
-        print "Rcv_thread: Send ACK with seq number: ", rcv_next_waiting, "and num_of_packets: ", num_of_packets
+
+        print "RCV_THREAD: Send ACK with seq number: ", rcv_next_waiting, "and num_of_packets: ", num_of_packets
 
 
         #if app waits give it priority
@@ -228,14 +238,15 @@ def snd_thread (sock):
 
         send_one = False
 
-        print "Snd_thread ready"
-
         snd_thread_app_mtx.acquire()
 
 
-        #Wait if buffer is empty
+        ################################################ ---------------> Wait if buffer has less than num_of_packets packets
+        # Prepei na allaksei kai na perimenei na exei num_of_packets?? sto telos mporei na kollaei an to app valei ligotera kai meta den exei na valei allaksei
+        # Isws na lunetai gia to telos an valoume sto close mia metavlhth pou tha thn elegxoume gia na kseroume oti einai ta teleutaia pou prepei na steiloume
+
         if (snd_in_buffer == 0):
-            print "Snd_thread: Wait for new packet"
+            print "SND_THREAD: Wait for new packet"
             snd_thread_app_mtx.release()
             snd_thread_wait = 1
             snd_thread_wait_mtx.acquire()
@@ -244,9 +255,11 @@ def snd_thread (sock):
 
         #Send num_of_packets packets
         for i in xrange (num_of_packets):
+
+            #Next packet is missing (when we send the last packets)
             if (snd_buf.has_key(snd_next_sending+i)):
                 #Send next packet
-                print "Snd_thread: Sending packet", snd_next_sending+i
+                print "SND_THREAD: Sending packet", snd_next_sending+i
                 sock.Send(snd_buf[snd_next_sending+i])
 
 
@@ -254,7 +267,7 @@ def snd_thread (sock):
         #Wait for ACK
         try:
             ack = packet_receive(sock, ACK_PACKET_SIZE, ACK_ENCODE)[0]
-            print "Snd_thread: Take ack with seq_num: ", ack[0], "and empty_spaces: ", ack[1]
+            print "SND_THREAD: Took ack with seq_num: ", ack[0], "and empty_spaces: ", ack[1]
 
             #Update buffer
             for i in xrange (snd_next_sending, ack[0]):
@@ -274,18 +287,12 @@ def snd_thread (sock):
             snd_app_wait_mtx.release()
         else:
             snd_thread_app_mtx.release()
+############################ </THREADS CODE> ############################
 
 
 
-#create packet
-def construct_packet(encode,number_of_packet,payload):
-    return struct.pack(encode,number_of_packet,payload)
 
-def deconstruct_packet(decode,packet):
-    try:
-        return struct.unpack(decode,packet)
-    except struct.error:
-        raise LengthError
+############################ <BASIC LIBRARY FUNCTIONS> ############################
 
 #Open reading side of pipe. Return a positive integer as file discriptor
 def netfifo_rcv_open(port,bufsize):
@@ -322,7 +329,7 @@ def netfifo_read(fd,size):
 
         while (rcv_next_app_read not in rcv_buf):
             #if packet not in buf wait
-            print "App waits for packet " ,rcv_next_app_read
+            print "READ_APP: waits for packet " ,rcv_next_app_read
             rcv_app_wait = 1
             rcv_thread_app_mtx.release()
             rcv_app_wait_mtx.acquire()
@@ -333,20 +340,22 @@ def netfifo_read(fd,size):
         rcv_next_app_read += 1
         rcv_in_buffer -= 1
         del rcv_buf[rcv_next_app_read-1]
-        print "App got packet", rcv_next_app_read-1
+        print "READ_APP: got packet", rcv_next_app_read-1
 
         rcv_thread_app_mtx.release()
 
         s = s + d
-        print "App has till now: ", s
+        print "READ_APP: has till now: ", s
 
     return s
-
 
 #close reading side
 def netfifo_rcv_close(fd):
     sock = fd_list[fd]
     sock.Close()
+
+
+
 
 
 #Open writing side of pipe. Return a positive integer as file discriptor
@@ -383,10 +392,10 @@ def netfifo_write(fd,buf,size):
 
         snd_thread_app_mtx.acquire()
 
-        print "App tries to add packet", snd_next_app_write
+        print "WRITE_APP: tries to add packet", snd_next_app_write
 
         while (snd_in_buffer == snd_buffer_size):
-            print "App waits for empty position"
+            print "WRITE_APP: waits for empty position"
             snd_app_wait = 1
             snd_thread_app_mtx.release()
             snd_app_wait_mtx.acquire()
@@ -397,7 +406,7 @@ def netfifo_write(fd,buf,size):
         snd_next_app_write += 1
         snd_in_buffer += 1
 
-        print "App added packet", snd_next_app_write-1,"(in:", snd_in_buffer, ")"
+        print "WRITE_APP: added packet", snd_next_app_write-1,"(in:", snd_in_buffer, ")"
 
         if (snd_thread_wait == 1):
             snd_thread_wait_mtx.release()
@@ -405,9 +414,9 @@ def netfifo_write(fd,buf,size):
             snd_thread_app_mtx.release()
 
 
-
-
 #close writing side
 def netfifo_snd_close(fd):
     sock = fd_list[fd]
     sock.Close()
+
+############################ </BASIC LIBRARY FUNCTIONS> ############################
