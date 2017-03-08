@@ -19,7 +19,11 @@ fd = netfifo_snd_open(Hostname(),port,10)
 for line in input_fd:
     netfifo_write(fd,line,len(line))
 
-#netfifo_write(fd,"hello world",11)
+#netfifo_write(fd,"hello",5)
+#netfifo_write(fd,"hello",5)
+#netfifo_write(fd,"hello",5)
+#netfifo_write(fd,"hello",5)
+#netfifo_write(fd,"heo",3)
 
 while(1):
     pass

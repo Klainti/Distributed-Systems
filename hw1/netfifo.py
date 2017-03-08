@@ -31,20 +31,21 @@ class LengthError(Exception):
 
 #Packets details
 ACK_PACKET_SIZE = 16
-DATA_PAYLOAD_SIZE = 24
-DATA_PACKET_SIZE = DATA_PAYLOAD_SIZE + 8
+DATA_PAYLOAD_SIZE = 20
+DATA_PACKET_SIZE = DATA_PAYLOAD_SIZE + 12
 
 """
     data packet encode: ! -> network
                         q -> long long integer (number of packet)
-                        10s -> string (payload=Data)
+                        s -> string (payload=Data)
+                        i -> integer
 
     ACK packet encode: ! -> network
                        q -> long long integer (number of packet)
                        q -> long long integer (empty spaces)
 """
 
-DATA_ENCODE = '!q' + str(DATA_PAYLOAD_SIZE) + 's'
+DATA_ENCODE = '!q' + str(DATA_PAYLOAD_SIZE) + 's' + 'i'
 ACK_ENCODE = '!qq'
 
 NPACKET_INDEX = 0
@@ -52,7 +53,7 @@ PAYLOAD_INDEX = 1
 
 
 #waiting time (float) to receive a packet! (in seconds)
-TIMEOUT = 1
+TIMEOUT = 0.1
 
 
 
@@ -117,12 +118,23 @@ snd_buffer_size = 0
 
 
 ############################ <PACKET FUNCTIONS> ############################
-def construct_packet(encode,number_of_packet,payload):
-    return struct.pack(encode,number_of_packet,payload)
+""" packet format: data_packet --> [number_of_packet,data,len_of_valid_data]
+                   ack_packet  --> [number_of_packet,next_number_sequence]
+"""
+def construct_packet(encode,number_of_packet,payload,size_of_valid_data):
+    if (encode=='!qq'):
+        return struct.pack(encode,number_of_packet,payload)
+    else:
+        return struct.pack(encode,number_of_packet,payload,size_of_valid_data)  
 
 def deconstruct_packet(decode,packet):
     try:
-        return struct.unpack(decode,packet)
+        if (decode=='!qq'):
+            return struct.unpack(decode,packet)
+        else:
+            npacket , data , len_valid_data = struct.unpack(decode,packet)
+            return (npacket,data[:len_valid_data])
+
     except struct.error:
         raise LengthError
 ############################ </PACKET FUNCTIONS> ############################
@@ -211,7 +223,7 @@ def rcv_thread (sock):
         num_of_packets = max(1, rcv_buffer_size - rcv_in_buffer)
 
         #send ACK for next num_of_packets packets
-        ack_packet = construct_packet(ACK_ENCODE, rcv_next_waiting, num_of_packets)
+        ack_packet = construct_packet(ACK_ENCODE, rcv_next_waiting, num_of_packets,None)
         sock.SendTo(ack_packet,addr)
 
         print "RCV_THREAD: Send ACK with seq number: ", rcv_next_waiting, "and num_of_packets: ", num_of_packets
@@ -281,6 +293,7 @@ def snd_thread (sock):
         except TimeError, LengthError:
             #ACK not received
             #send only one packet
+            print 'ACK not received'
             send_one = True
 
         if (snd_app_wait == 1):
@@ -388,7 +401,7 @@ def netfifo_write(fd,buf,size):
 
     for s in xrange (0, size, DATA_PAYLOAD_SIZE):
 
-        packet = construct_packet(DATA_ENCODE,snd_next_app_write, buf[s: s+ DATA_PAYLOAD_SIZE])
+        packet = construct_packet(DATA_ENCODE,snd_next_app_write, buf[s: s+ DATA_PAYLOAD_SIZE],len(buf[s: s+ DATA_PAYLOAD_SIZE]))
 
         snd_thread_app_mtx.acquire()
 
