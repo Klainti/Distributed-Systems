@@ -32,9 +32,9 @@ class LengthError(Exception):
 ################################## CONSTANTS ##################################
 
 #Packets details
-DATA_PACKET_SIZE = 20
 ACK_PACKET_SIZE = 16
-DATA_PAYLOAD_SIZE = 10
+DATA_PAYLOAD_SIZE = 24
+DATA_PACKET_SIZE = DATA_PAYLOAD_SIZE + 8
 
 """
     data packet encode: ! -> network
@@ -46,7 +46,7 @@ DATA_PAYLOAD_SIZE = 10
                        q -> long long integer (empty spaces)
 """
 
-DATA_ENCODE = '!q10s'
+DATA_ENCODE = '!q' + str(DATA_PAYLOAD_SIZE) + 's'
 ACK_ENCODE = '!qq'
 
 NPACKET_INDEX = 0
@@ -183,8 +183,10 @@ def rcv_thread (sock):
                 if (not rcv_buf.has_key(data[NPACKET_INDEX])):
                     rcv_buf.update( {data[NPACKET_INDEX]: data[PAYLOAD_INDEX]} )
 
-                rcv_in_buffer += 1
-                print "Rcv_thread: Received packet" ,data[NPACKET_INDEX] , "(in:", rcv_in_buffer, ")"
+                    rcv_in_buffer += 1
+                    print "Rcv_thread: Received packet" ,data[NPACKET_INDEX] , "(in:", rcv_in_buffer, ")"
+
+                    print "Rec Buffer:", rcv_buf
 
             rcv_thread_app_mtx.release()
 
@@ -312,12 +314,13 @@ def netfifo_read(fd,size):
 
     s = ""
 
-    while (len(s) < min(rcv_buffer_size*DATA_PAYLOAD_SIZE, size/DATA_PAYLOAD_SIZE * DATA_PAYLOAD_SIZE)):
+    #while (len(s) < min(rcv_buffer_size*DATA_PAYLOAD_SIZE, size/DATA_PAYLOAD_SIZE * DATA_PAYLOAD_SIZE)):
 
+    while (len(s)<size):
         #app wants to read packet next_app_read
         rcv_thread_app_mtx.acquire()
 
-        if (rcv_next_app_read not in rcv_buf):
+        while (rcv_next_app_read not in rcv_buf):
             #if packet not in buf wait
             print "App waits for packet " ,rcv_next_app_read
             rcv_app_wait = 1
@@ -382,7 +385,7 @@ def netfifo_write(fd,buf,size):
 
         print "App tries to add packet", snd_next_app_write
 
-        if (snd_in_buffer == snd_buffer_size):
+        while (snd_in_buffer == snd_buffer_size):
             print "App waits for empty position"
             snd_app_wait = 1
             snd_thread_app_mtx.release()
