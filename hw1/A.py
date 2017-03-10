@@ -21,6 +21,7 @@ for line in input_fd:
 
 
 input_fd.close()
+
 #netfifo_write(fd,"hello",5)
 #netfifo_write(fd,"hello",5)
 #netfifo_write(fd,"hello",5)
