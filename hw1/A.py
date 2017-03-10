@@ -25,7 +25,4 @@ for line in input_fd:
 #netfifo_write(fd,"hello",5)
 #netfifo_write(fd,"heo",3)
 
-while(1):
-    pass
-
 netfifo_snd_close(fd)
