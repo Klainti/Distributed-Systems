@@ -6,6 +6,9 @@ import socket
 from netfifo import *
 import time
 
+
+output_fd = open('new_file.txt','w')
+
 ##testing !
 port = 10000
 fd = netfifo_rcv_open(port,10)
@@ -17,6 +20,11 @@ fd_output.write(s)
 print "************************************"
 print "Returned value:", s
 print "************************************"
+
+output_fd.write (s)
+
+output_fd.close()
+
 while(1):
     pass
 
