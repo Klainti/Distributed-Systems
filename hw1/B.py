@@ -14,8 +14,9 @@ fd_output = open('output.txt','w')
 
 s = netfifo_read(fd,1000)
 fd_output.write(s)
+print "************************************"
 print "Returned value:", s
-
+print "************************************"
 while(1):
     pass
 
