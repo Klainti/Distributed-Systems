@@ -264,8 +264,8 @@ def snd_thread (sock):
         #Except if close has been called (end_of_trans == 1) which means we must send the remaining packets
         while (snd_in_buffer < min(num_of_packets, snd_buffer_size) and (not end_of_trans) ):
             print "SND_THREAD: Wait for new packet"
-            snd_thread_app_mtx.release()
             snd_thread_wait = 1
+            snd_thread_app_mtx.release()
             snd_thread_wait_mtx.acquire()
             snd_thread_app_mtx.acquire()
             snd_thread_wait = 0
