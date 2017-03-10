@@ -9,7 +9,7 @@ from MySocket_library import *
 import socket
 import struct
 import thread
-
+import time
 
 
 #Custom Errors
@@ -53,7 +53,7 @@ PAYLOAD_INDEX = 1
 
 
 #waiting time (float) to receive a packet! (in seconds)
-TIMEOUT = 0.1
+TIMEOUT = 1
 
 
 
@@ -107,6 +107,11 @@ snd_in_buffer = 0
 snd_buf = {}
 
 snd_buffer_size = 0
+
+end_of_trans = 0
+
+close_mtx = thread.allocate_lock()
+close_mtx.acquire()
 ################################# </SEND> #################################
 
 
@@ -120,16 +125,17 @@ snd_buffer_size = 0
 ############################ <PACKET FUNCTIONS> ############################
 """ packet format: data_packet --> [number_of_packet,data,len_of_valid_data]
                    ack_packet  --> [number_of_packet,next_number_sequence]
+                   rtt_packet  --> [RTT]
 """
-def construct_packet(encode,number_of_packet,payload,size_of_valid_data):
-    if (encode=='!qq'):
+def construct_packet(encode, number_of_packet, payload, size_of_valid_data):
+    if (encode == '!qq'):
         return struct.pack(encode,number_of_packet,payload)
     else:
-        return struct.pack(encode,number_of_packet,payload,size_of_valid_data)  
+        return struct.pack(encode,number_of_packet,payload,size_of_valid_data)
 
-def deconstruct_packet(decode,packet):
+def deconstruct_packet(decode, packet):
     try:
-        if (decode=='!qq'):
+        if (decode == '!qq'):
             return struct.unpack(decode,packet)
         else:
             npacket , data , len_valid_data = struct.unpack(decode,packet)
@@ -174,9 +180,8 @@ def rcv_thread (sock):
     global rcv_in_buffer
     global rcv_buffer_size
 
+
     num_of_packets = 1
-
-
 
     while (True):
 
@@ -243,25 +248,26 @@ def snd_thread (sock):
     global snd_in_buffer
     global snd_app_wait
     global snd_thread_wait
+    global end_of_trans
 
     num_of_packets = 1
 
     while (True):
 
+        #DEN TO XRHSIMOPOIOUME. ANT NA STELNOUME ENA AN DEN LAVEI ACK EMEIS TA KSANASTELNOUME OLA. MPOROUME NA TO KRATHSOUME KAI ETSI
         send_one = False
 
         snd_thread_app_mtx.acquire()
 
 
-        ################################################ ---------------> Wait if buffer has less than num_of_packets packets
-        # Prepei na allaksei kai na perimenei na exei num_of_packets?? sto telos mporei na kollaei an to app valei ligotera kai meta den exei na valei allaksei
-        # Isws na lunetai gia to telos an valoume sto close mia metavlhth pou tha thn elegxoume gia na kseroume oti einai ta teleutaia pou prepei na steiloume
-
-        if (snd_in_buffer == 0):
+        #Waits till buffer has at least num_of_packets packets (if num_of_packets > buffer_size we reduce num_of_packets to buffer_size)
+        #Except if close has been called (end_of_trans == 1) which means we must send the remaining packets
+        while (snd_in_buffer < min(num_of_packets, snd_buffer_size) and (not end_of_trans) ):
             print "SND_THREAD: Wait for new packet"
             snd_thread_app_mtx.release()
             snd_thread_wait = 1
             snd_thread_wait_mtx.acquire()
+            snd_thread_app_mtx.acquire()
             snd_thread_wait = 0
 
 
@@ -286,6 +292,9 @@ def snd_thread (sock):
                 del snd_buf[i]
                 snd_in_buffer -= 1
 
+            if (end_of_trans and snd_in_buffer == 0):
+                break
+
             #Update variables
             snd_next_sending = ack[0]
             num_of_packets = ack[1]
@@ -300,6 +309,9 @@ def snd_thread (sock):
             snd_app_wait_mtx.release()
         else:
             snd_thread_app_mtx.release()
+
+    print "RCV_THREAD: End of transmision"
+    close_mtx.release()
 ############################ </THREADS CODE> ############################
 
 
@@ -357,8 +369,13 @@ def netfifo_read(fd,size):
 
         rcv_thread_app_mtx.release()
 
+        if (d == ""):
+            break
+
         s = s + d
         print "READ_APP: has till now: ", s
+
+
 
     return s
 
@@ -423,13 +440,31 @@ def netfifo_write(fd,buf,size):
 
         if (snd_thread_wait == 1):
             snd_thread_wait_mtx.release()
-        else:
-            snd_thread_app_mtx.release()
+
+        snd_thread_app_mtx.release()
 
 
 #close writing side
 def netfifo_snd_close(fd):
+
     sock = fd_list[fd]
+
+    global end_of_trans
+    global snd_thread_wait
+
+    netfifo_write (fd, "", 1)
+
+    snd_thread_app_mtx.acquire()
+
+    end_of_trans = 1
+
+    if (snd_thread_wait == 1):
+        snd_thread_wait_mtx.release()
+
+    snd_thread_app_mtx.release()
+
+    close_mtx.acquire()
+
     sock.Close()
 
 ############################ </BASIC LIBRARY FUNCTIONS> ############################
