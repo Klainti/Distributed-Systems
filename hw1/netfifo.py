@@ -307,8 +307,8 @@ def snd_thread (sock):
 
         if (snd_app_wait == 1):
             snd_app_wait_mtx.release()
-        else:
-            snd_thread_app_mtx.release()
+
+        snd_thread_app_mtx.release()
 
     print "RCV_THREAD: End of transmision"
     close_mtx.release()
@@ -429,6 +429,7 @@ def netfifo_write(fd,buf,size):
             snd_app_wait = 1
             snd_thread_app_mtx.release()
             snd_app_wait_mtx.acquire()
+            snd_thread_app_mtx.acquire()
             snd_app_wait = 0
 
         snd_buf.update ({snd_next_app_write: packet})
