@@ -19,6 +19,8 @@ fd = netfifo_snd_open(Hostname(),port,10)
 for line in input_fd:
     netfifo_write(fd,line,len(line))
 
+
+input_fd.close()
 #netfifo_write(fd,"hello",5)
 #netfifo_write(fd,"hello",5)
 #netfifo_write(fd,"hello",5)
