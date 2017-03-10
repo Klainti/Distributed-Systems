@@ -25,7 +25,4 @@ output_fd.write (s)
 
 output_fd.close()
 
-while(1):
-    pass
-
 netfifo_rcv_close(fd)

@@ -53,12 +53,17 @@ PAYLOAD_INDEX = 1
 
 
 #waiting time (float) to receive a packet! (in seconds)
-TIMEOUT = 1
-
+TIMEOUT = 0.1
 
 
 ###############################################################################
 ################################## VARIABLES ##################################
+
+#closing variables!!!
+end_of_trans = 0
+
+close_mtx = thread.allocate_lock()
+close_mtx.acquire()
 
 fd_list = []
 
@@ -81,6 +86,7 @@ rcv_in_buffer = 0
 rcv_buf = {}
 
 rcv_buffer_size = 0
+
 ################################# </RCV> #################################
 
 
@@ -108,10 +114,6 @@ snd_buf = {}
 
 snd_buffer_size = 0
 
-end_of_trans = 0
-
-close_mtx = thread.allocate_lock()
-close_mtx.acquire()
 ################################# </SEND> #################################
 
 
@@ -213,12 +215,17 @@ def rcv_thread (sock):
 
             rcv_thread_app_mtx.release()
 
+        
+        rcv_thread_app_mtx.acquire()
+
+        #check for close
+        if (end_of_trans==1):
+            break
 
         #Not a single packet received
         if (missed == num_of_packets):
+            rcv_thread_app_mtx.release()
             continue
-
-        rcv_thread_app_mtx.acquire()
 
         #Find the first missing packet
         while (rcv_buf.has_key(rcv_next_waiting)):
@@ -241,6 +248,8 @@ def rcv_thread (sock):
             rcv_thread_app_mtx.release()
 
 
+    print 'End of Receiving!'
+    close_mtx.release()
 
 def snd_thread (sock):
 
@@ -268,7 +277,6 @@ def snd_thread (sock):
             snd_thread_app_mtx.release()
             snd_thread_wait_mtx.acquire()
             snd_thread_app_mtx.acquire()
-            snd_thread_wait = 0
 
 
         #Send num_of_packets packets
@@ -306,6 +314,7 @@ def snd_thread (sock):
             send_one = True
 
         if (snd_app_wait == 1):
+            snd_app_wait=0
             snd_app_wait_mtx.release()
 
         snd_thread_app_mtx.release()
@@ -381,7 +390,16 @@ def netfifo_read(fd,size):
 
 #close reading side
 def netfifo_rcv_close(fd):
+    
+    global end_of_trans
+
     sock = fd_list[fd]
+
+    rcv_thread_app_mtx.acquire()
+    end_of_trans=1
+    rcv_thread_app_mtx.release()
+
+    close_mtx.acquire()
     sock.Close()
 
 
@@ -430,7 +448,6 @@ def netfifo_write(fd,buf,size):
             snd_thread_app_mtx.release()
             snd_app_wait_mtx.acquire()
             snd_thread_app_mtx.acquire()
-            snd_app_wait = 0
 
         snd_buf.update ({snd_next_app_write: packet})
 
@@ -440,7 +457,9 @@ def netfifo_write(fd,buf,size):
         print "WRITE_APP: added packet", snd_next_app_write-1,"(in:", snd_in_buffer, ")"
 
         if (snd_thread_wait == 1):
+            snd_thread_wait=0
             snd_thread_wait_mtx.release()
+            
 
         snd_thread_app_mtx.release()
 
