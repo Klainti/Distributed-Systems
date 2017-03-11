@@ -7,18 +7,37 @@ sys.path.append('../sockets/')
 from MySocket_library import *
 import socket
 
-host = 'ThinkPad-Edge-E540'
+host = '127.0.1.1'
 port = 10000
 
 #input
 input_fd = open('file.txt','r')
 
 
-fd = netfifo_snd_open(Hostname(),port,10)
+fd = netfifo_snd_open(host,port,10)
 
-for line in input_fd:
-    netfifo_write(fd,line,len(line))
+for line in input_fd:	
+	try:    
+		netfifo_write(fd,line,len(line))	
+	except ReceiverError:
+		print "netfifo_write failed"
+		break
 
+input_fd.close()
+
+netfifo_snd_close(fd)
+
+input_fd = open('file.txt','r')
+
+
+fd = netfifo_snd_open(host,port,10)
+
+for line in input_fd:	
+	try:    
+		netfifo_write(fd,line,len(line))	
+	except ReceiverError:
+		print "netfifo_write failed"
+		break
 
 input_fd.close()
 

@@ -25,6 +25,12 @@ class LengthError(Exception):
     def __str__(self):
         return repr(self.value)
 
+class ReceiverError(Exception):
+    def __init__(self, value):
+        self.value = value
+    def __str__(self):
+        return repr(self.value)
+
 
 ###############################################################################
 ################################## CONSTANTS ##################################
@@ -53,7 +59,7 @@ PAYLOAD_INDEX = 1
 
 
 #waiting time (float) to receive a packet! (in seconds)
-TIMEOUT = 0.1
+TIMEOUT = 2
 
 
 ###############################################################################
@@ -64,6 +70,8 @@ end_of_trans = 0
 
 close_mtx = thread.allocate_lock()
 close_mtx.acquire()
+
+error = 0
 
 fd_list = []
 
@@ -215,7 +223,7 @@ def rcv_thread (sock):
 
             rcv_thread_app_mtx.release()
 
-        
+
         rcv_thread_app_mtx.acquire()
 
         #check for close
@@ -258,6 +266,7 @@ def snd_thread (sock):
     global snd_app_wait
     global snd_thread_wait
     global end_of_trans
+    global error
 
     num_of_packets = 1
 
@@ -285,10 +294,22 @@ def snd_thread (sock):
             #Next packet is missing (when we send the last packets)
             if (snd_buf.has_key(snd_next_sending+i)):
                 #Send next packet
-                print "SND_THREAD: Sending packet", snd_next_sending+i
-                sock.Send(snd_buf[snd_next_sending+i])
+                try:
+                    print "SND_THREAD: Sending packet", snd_next_sending+i
+                    sock.Send(snd_buf[snd_next_sending+i])
+                except socket.error:
+                    error = 1
+                    end_of_trans = 1
+
+                    if (snd_app_wait == 1):
+                        snd_app_wait=0
+                        snd_app_wait_mtx.release()
+
+                    break
 
 
+        if (error):
+            break
 
         #Wait for ACK
         try:
@@ -300,18 +321,27 @@ def snd_thread (sock):
                 del snd_buf[i]
                 snd_in_buffer -= 1
 
-            if (end_of_trans and snd_in_buffer == 0):
-                break
-
             #Update variables
             snd_next_sending = ack[0]
             num_of_packets = ack[1]
 
+            if (end_of_trans and snd_in_buffer == 0):
+                break
+
         except TimeError, LengthError:
             #ACK not received
             #send only one packet
-            print 'ACK not received'
+            print "SND_THREAD: ACK not received"
             send_one = True
+        except socket.error:
+            error = 1
+            end_of_trans = 1
+
+            if (snd_app_wait == 1):
+                snd_app_wait=0
+                snd_app_wait_mtx.release()
+
+            break
 
         if (snd_app_wait == 1):
             snd_app_wait=0
@@ -319,7 +349,9 @@ def snd_thread (sock):
 
         snd_thread_app_mtx.release()
 
-    print "RCV_THREAD: End of transmision"
+
+    snd_thread_app_mtx.release()
+    print "SND_THREAD: End of transmision"
     close_mtx.release()
 ############################ </THREADS CODE> ############################
 
@@ -390,7 +422,7 @@ def netfifo_read(fd,size):
 
 #close reading side
 def netfifo_rcv_close(fd):
-    
+
     global end_of_trans
 
     sock = fd_list[fd]
@@ -413,6 +445,18 @@ def netfifo_snd_open(host,port,bufsize):
     global snd_buffer_size
     snd_buffer_size = bufsize
 
+    global error
+    global end_of_trans
+    global snd_in_buffer
+    global snd_buf
+
+    error = 0
+    end_of_trans = 0
+    snd_in_buffer = 0
+    snd_buf = {}
+
+
+
     #create Server object (writing side)
     socket_object = SocketClient(socket.AF_INET, socket.SOCK_DGRAM, TIMEOUT, 0)
     socket_object.Connect(host,port)
@@ -433,8 +477,10 @@ def netfifo_write(fd,buf,size):
     global snd_thread_wait
     global snd_buffer_size
     global snd_app_wait
+    global error
 
     for s in xrange (0, size, DATA_PAYLOAD_SIZE):
+
 
         packet = construct_packet(DATA_ENCODE,snd_next_app_write, buf[s: s+ DATA_PAYLOAD_SIZE],len(buf[s: s+ DATA_PAYLOAD_SIZE]))
 
@@ -442,12 +488,17 @@ def netfifo_write(fd,buf,size):
 
         print "WRITE_APP: tries to add packet", snd_next_app_write
 
-        while (snd_in_buffer == snd_buffer_size):
+        while (snd_in_buffer == snd_buffer_size and (not error)):
             print "WRITE_APP: waits for empty position"
             snd_app_wait = 1
             snd_thread_app_mtx.release()
             snd_app_wait_mtx.acquire()
             snd_thread_app_mtx.acquire()
+
+        if (error):
+            raise ReceiverError ("Unreachable Receiver")
+            snd_thread_app_mtx.release()
+            break
 
         snd_buf.update ({snd_next_app_write: packet})
 
@@ -459,7 +510,7 @@ def netfifo_write(fd,buf,size):
         if (snd_thread_wait == 1):
             snd_thread_wait=0
             snd_thread_wait_mtx.release()
-            
+
 
         snd_thread_app_mtx.release()
 
@@ -467,10 +518,15 @@ def netfifo_write(fd,buf,size):
 #close writing side
 def netfifo_snd_close(fd):
 
-    sock = fd_list[fd]
-
+    global error
     global end_of_trans
     global snd_thread_wait
+
+    if (error):
+        del fd_list[fd]
+        return
+
+    sock = fd_list[fd]
 
     netfifo_write (fd, "", 1)
 
@@ -487,4 +543,5 @@ def netfifo_snd_close(fd):
 
     sock.Close()
 
+    del fd_list[fd]
 ############################ </BASIC LIBRARY FUNCTIONS> ############################

@@ -21,8 +21,17 @@ print "************************************"
 print "Returned value:", s
 print "************************************"
 
+
+s = netfifo_read(fd,1000)
+fd_output.write(s)
+print "************************************"
+print "Returned value:", s
+print "************************************"
+
 output_fd.write (s)
 
 output_fd.close()
+
+
 
 netfifo_rcv_close(fd)
