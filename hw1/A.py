@@ -14,7 +14,7 @@ port = 10000
 input_fd = open('file.txt','r')
 
 
-fd = netfifo_snd_open(host,port,10)
+fd = netfifo_snd_open(host,port,5000)
 
 for line in input_fd:	
 	try:    
@@ -27,6 +27,7 @@ input_fd.close()
 
 netfifo_snd_close(fd)
 
+"""
 input_fd = open('file.txt','r')
 
 
@@ -47,4 +48,4 @@ input_fd.close()
 #netfifo_write(fd,"hello",5)
 #netfifo_write(fd,"heo",3)
 
-netfifo_snd_close(fd)
+netfifo_snd_close(fd) """

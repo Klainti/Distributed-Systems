@@ -59,7 +59,7 @@ PAYLOAD_INDEX = 1
 
 
 #waiting time (float) to receive a packet! (in seconds)
-TIMEOUT = 2
+TIMEOUT = 0.2
 
 
 ###############################################################################
@@ -74,6 +74,12 @@ close_mtx.acquire()
 error = 0
 
 fd_list = []
+
+
+#counters for retransmitted packets,unacked etc
+retran_packet= 0
+dupli_packet = 0
+
 
 ################################# <RCV> #################################
 #mutex for app. If the packet it requests isnt in the buffer app_wait = 1 and app_wait_mtx.acquire()
@@ -189,6 +195,7 @@ def rcv_thread (sock):
     global rcv_next_app_read
     global rcv_in_buffer
     global rcv_buffer_size
+    global dupli_packet
 
 
     num_of_packets = 1
@@ -199,15 +206,26 @@ def rcv_thread (sock):
 
         for p in xrange (num_of_packets):
 
+
+	    #check for close
+       	    if (end_of_trans==1):
+            	break		
+ 
+
+
             try:
                 data, addr = packet_receive(sock, DATA_PACKET_SIZE, DATA_ENCODE)
             except:
                 missed += 1
                 continue
 
-            print "RCV_THREAD: got", data
+            #print "RCV_THREAD: got", data
 
             rcv_thread_app_mtx.acquire()
+
+		
+            
+
 
             #Check if packet key is within window [rcv_next_waiting - rcv_next_waiting + num_of_packets] and buffer has empty space in order to save its
             if (data[NPACKET_INDEX] >= rcv_next_waiting and data[NPACKET_INDEX] <= rcv_next_waiting + num_of_packets and data[NPACKET_INDEX]-rcv_next_waiting < rcv_buffer_size-rcv_in_buffer):
@@ -217,9 +235,21 @@ def rcv_thread (sock):
                     rcv_buf.update( {data[NPACKET_INDEX]: data[PAYLOAD_INDEX]} )
 
                     rcv_in_buffer += 1
-                    print "Rcv_thread: Received packet" ,data[NPACKET_INDEX] , "(in:", rcv_in_buffer, ")"
+                    #print "Rcv_thread: Received packet" ,data[NPACKET_INDEX] , "(in:", rcv_in_buffer, ")"
 
-                    print "Rec Buffer:", rcv_buf
+                    #print "Rec Buffer:", rcv_buf, "(", len(rcv_buf), ")"
+
+
+		    if (data[NPACKET_INDEX] == rcv_next_waiting + 1):
+			rcv_next_waiting += 1
+
+                else: #already in buffer
+                    dupli_packet += 1
+
+
+            else: #buffer full
+                dupli_packet += 1
+
 
             rcv_thread_app_mtx.release()
 
@@ -255,7 +285,7 @@ def rcv_thread (sock):
         else:
             rcv_thread_app_mtx.release()
 
-
+    rcv_thread_app_mtx.release()
     print 'End of Receiving!'
     close_mtx.release()
 
@@ -267,6 +297,7 @@ def snd_thread (sock):
     global snd_thread_wait
     global end_of_trans
     global error
+    global retran_packet
 
     num_of_packets = 1
 
@@ -281,13 +312,14 @@ def snd_thread (sock):
         #Waits till buffer has at least num_of_packets packets (if num_of_packets > buffer_size we reduce num_of_packets to buffer_size)
         #Except if close has been called (end_of_trans == 1) which means we must send the remaining packets
         while (snd_in_buffer < min(num_of_packets, snd_buffer_size) and (not end_of_trans) ):
-            print "SND_THREAD: Wait for new packet"
+            #print "SND_THREAD: Wait for new packet"
             snd_thread_wait = 1
             snd_thread_app_mtx.release()
             snd_thread_wait_mtx.acquire()
             snd_thread_app_mtx.acquire()
 
 
+        tmp_send_counter = 0
         #Send num_of_packets packets
         for i in xrange (num_of_packets):
 
@@ -295,8 +327,9 @@ def snd_thread (sock):
             if (snd_buf.has_key(snd_next_sending+i)):
                 #Send next packet
                 try:
-                    print "SND_THREAD: Sending packet", snd_next_sending+i
+                    #print "SND_THREAD: Sending packet", snd_next_sending+i
                     sock.Send(snd_buf[snd_next_sending+i])
+                    tmp_send_counter += 1
                 except socket.error:
                     error = 1
                     end_of_trans = 1
@@ -316,6 +349,8 @@ def snd_thread (sock):
             ack = packet_receive(sock, ACK_PACKET_SIZE, ACK_ENCODE)[0]
             print "SND_THREAD: Took ack with seq_num: ", ack[0], "and empty_spaces: ", ack[1]
 
+            retran_packet += snd_next_sending+tmp_send_counter - ack[0]
+
             #Update buffer
             for i in xrange (snd_next_sending, ack[0]):
                 del snd_buf[i]
@@ -331,6 +366,7 @@ def snd_thread (sock):
         except TimeError, LengthError:
             #ACK not received
             #send only one packet
+            retran_packet += tmp_send_counter
             print "SND_THREAD: ACK not received"
             send_one = True
         except socket.error:
@@ -395,7 +431,7 @@ def netfifo_read(fd,size):
 
         while (rcv_next_app_read not in rcv_buf):
             #if packet not in buf wait
-            print "READ_APP: waits for packet " ,rcv_next_app_read
+            #print "READ_APP: waits for packet " ,rcv_next_app_read
             rcv_app_wait = 1
             rcv_thread_app_mtx.release()
             rcv_app_wait_mtx.acquire()
@@ -406,7 +442,7 @@ def netfifo_read(fd,size):
         rcv_next_app_read += 1
         rcv_in_buffer -= 1
         del rcv_buf[rcv_next_app_read-1]
-        print "READ_APP: got packet", rcv_next_app_read-1
+        #print "READ_APP: got packet", rcv_next_app_read-1
 
         rcv_thread_app_mtx.release()
 
@@ -414,7 +450,7 @@ def netfifo_read(fd,size):
             break
 
         s = s + d
-        print "READ_APP: has till now: ", s
+        #print "READ_APP: has till now: ", s
 
 
 
@@ -424,6 +460,7 @@ def netfifo_read(fd,size):
 def netfifo_rcv_close(fd):
 
     global end_of_trans
+    global dupli_packet
 
     sock = fd_list[fd]
 
@@ -432,6 +469,8 @@ def netfifo_rcv_close(fd):
     rcv_thread_app_mtx.release()
 
     close_mtx.acquire()
+
+    print 'Duplicate packets !!!! ---->', dupli_packet
     sock.Close()
 
 
@@ -486,10 +525,10 @@ def netfifo_write(fd,buf,size):
 
         snd_thread_app_mtx.acquire()
 
-        print "WRITE_APP: tries to add packet", snd_next_app_write
+        #print "WRITE_APP: tries to add packet", snd_next_app_write
 
         while (snd_in_buffer == snd_buffer_size and (not error)):
-            print "WRITE_APP: waits for empty position"
+            #print "WRITE_APP: waits for empty position"
             snd_app_wait = 1
             snd_thread_app_mtx.release()
             snd_app_wait_mtx.acquire()
@@ -505,7 +544,7 @@ def netfifo_write(fd,buf,size):
         snd_next_app_write += 1
         snd_in_buffer += 1
 
-        print "WRITE_APP: added packet", snd_next_app_write-1,"(in:", snd_in_buffer, ")"
+        #print "WRITE_APP: added packet", snd_next_app_write-1,"(in:", snd_in_buffer, ")"
 
         if (snd_thread_wait == 1):
             snd_thread_wait=0
@@ -521,6 +560,7 @@ def netfifo_snd_close(fd):
     global error
     global end_of_trans
     global snd_thread_wait
+    global retran_packet
 
     if (error):
         del fd_list[fd]
@@ -540,6 +580,8 @@ def netfifo_snd_close(fd):
     snd_thread_app_mtx.release()
 
     close_mtx.acquire()
+
+    print 'Retrans packets !!!!!!---->', retran_packet
 
     sock.Close()
 

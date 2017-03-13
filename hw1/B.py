@@ -11,27 +11,27 @@ output_fd = open('new_file.txt','w')
 
 ##testing !
 port = 10000
-fd = netfifo_rcv_open(port,10)
+fd = netfifo_rcv_open(port,5000)
 
 fd_output = open('output.txt','w')
 
-s = netfifo_read(fd,1000)
+s = netfifo_read(fd,10000000)
+fd_output.write(s)
+print "************************************"
+#print "Returned value:", s
+print "************************************"
+
+"""
+s = netfifo_read(fd,100)
 fd_output.write(s)
 print "************************************"
 print "Returned value:", s
 print "************************************"
-
-
-s = netfifo_read(fd,1000)
-fd_output.write(s)
-print "************************************"
-print "Returned value:", s
-print "************************************"
-
+"""
 output_fd.write (s)
 
 output_fd.close()
-
+print "File closed"
 
 
 netfifo_rcv_close(fd)
