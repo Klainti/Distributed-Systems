@@ -37,7 +37,7 @@ class ReceiverError(Exception):
 
 #Packets details
 ACK_PACKET_SIZE = 16
-DATA_PAYLOAD_SIZE = 20
+DATA_PAYLOAD_SIZE = 2036
 DATA_PACKET_SIZE = DATA_PAYLOAD_SIZE + 12
 
 """
@@ -234,10 +234,13 @@ def rcv_thread (sock):
                 if (not rcv_buf.has_key(data[NPACKET_INDEX])):
                     rcv_buf.update( {data[NPACKET_INDEX]: data[PAYLOAD_INDEX]} )
 
+                    if (data[NPACKET_INDEX] == rcv_next_waiting + 1):
+                        rcv_next_waiting += 1
+
                     rcv_in_buffer += 1
                     #print "Rcv_thread: Received packet" ,data[NPACKET_INDEX] , "(in:", rcv_in_buffer, ")"
 
-                    #print "Rec Buffer:", rcv_buf, "(", len(rcv_buf), ")"
+                    print "Rec Buffer:", rcv_buf, "(", len(rcv_buf), ")"
 
 
 		    if (data[NPACKET_INDEX] == rcv_next_waiting + 1):
@@ -270,7 +273,7 @@ def rcv_thread (sock):
             rcv_next_waiting += 1
 
         #In case buffer is full we send 1 empty space instead of 0
-        num_of_packets = max(1, rcv_buffer_size - rcv_in_buffer)
+        num_of_packets = min(100,max(1, rcv_buffer_size - rcv_in_buffer))
 
         #send ACK for next num_of_packets packets
         ack_packet = construct_packet(ACK_ENCODE, rcv_next_waiting, num_of_packets,None)
@@ -401,7 +404,7 @@ def netfifo_rcv_open(port,bufsize):
 
     #initial buffer
     global rcv_buffer_size
-    rcv_buffer_size = bufsize
+    rcv_buffer_size = max(1,bufsize/DATA_PAYLOAD_SIZE)
 
     #create Server object (reading side)
     socket_object = SocketServer(socket.AF_INET, socket.SOCK_DGRAM, TIMEOUT, Hostname(), port, 0)
@@ -482,7 +485,8 @@ def netfifo_snd_open(host,port,bufsize):
 
     #initial buffer
     global snd_buffer_size
-    snd_buffer_size = bufsize
+    snd_buffer_size = max(1,bufsize/DATA_PAYLOAD_SIZE)
+    print 'buffer size: ', snd_buffer_size
 
     global error
     global end_of_trans
