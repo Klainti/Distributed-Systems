@@ -14,38 +14,12 @@ port = 10000
 input_fd = open('file.txt','r')
 
 
-fd = netfifo_snd_open(host,port,5000)
+fd = netfifo_snd_open(host,port,50000)
 
-for line in input_fd:	
-	try:    
-		netfifo_write(fd,line,len(line))	
-	except ReceiverError:
-		print "netfifo_write failed"
-		break
+data = input_fd.read()
+
+netfifo_write(fd,data,len(data))
 
 input_fd.close()
 
 netfifo_snd_close(fd)
-
-"""
-input_fd = open('file.txt','r')
-
-
-fd = netfifo_snd_open(host,port,10)
-
-for line in input_fd:	
-	try:    
-		netfifo_write(fd,line,len(line))	
-	except ReceiverError:
-		print "netfifo_write failed"
-		break
-
-input_fd.close()
-
-#netfifo_write(fd,"hello",5)
-#netfifo_write(fd,"hello",5)
-#netfifo_write(fd,"hello",5)
-#netfifo_write(fd,"hello",5)
-#netfifo_write(fd,"heo",3)
-
-netfifo_snd_close(fd) """
