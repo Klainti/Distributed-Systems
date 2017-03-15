@@ -7,7 +7,7 @@ sys.path.append('../sockets/')
 from MySocket_library import *
 import socket
 
-host = '127.0.1.1'
+host = raw_input('host\'s IP: ')
 port = 10000
 
 #input

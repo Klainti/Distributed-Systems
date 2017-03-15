@@ -422,7 +422,7 @@ def netfifo_rcv_open(port,bufsize):
     rcv_buffer_size = max(1,bufsize/DATA_PAYLOAD_SIZE)
 
     #create Server object (reading side)
-    socket_object = SocketServer(socket.AF_INET, socket.SOCK_DGRAM, TIMEOUT, Hostname(), port, 0)
+    socket_object = SocketServer(socket.AF_INET, socket.SOCK_DGRAM, TIMEOUT, '0.0.0.0', port, 0)
 
     #start the thread
     thread.start_new_thread (rcv_thread, (socket_object, ))
@@ -585,6 +585,7 @@ def netfifo_snd_close(fd):
     global snd_thread_wait
     global retran_packet
     global snd_total_packets
+	global snd_next_sending
 
     snd_thread_app_mtx.acquire()
     if (error):
@@ -609,7 +610,7 @@ def netfifo_snd_close(fd):
     close_mtx.acquire()
 
     print 'Total Send packets !!!! ---->', snd_total_packets
-    print 'Retrans packets !!!!!!---->', retran_packet
+    print 'Retrans packets !!!!!!---->', snd_total_packets - snd_next_sending + 1
 
     sock.Close()
 
