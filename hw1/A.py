@@ -18,7 +18,11 @@ fd = netfifo_snd_open(host,port,50000)
 
 data = input_fd.read()
 
-netfifo_write(fd,data,len(data))
+try:
+	netfifo_write(fd,data,len(data))
+except ReceiverError:
+	print "Cant reach Reicever"
+
 
 input_fd.close()
 

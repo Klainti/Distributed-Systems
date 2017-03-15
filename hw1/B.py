@@ -12,7 +12,7 @@ fd = netfifo_rcv_open(port,50000)
 
 output_fd = open('output.txt','w')
 
-s = netfifo_read(fd,10000000)
+s = netfifo_read(fd,100000000)
 output_fd.write(s)
 
 output_fd.close()
