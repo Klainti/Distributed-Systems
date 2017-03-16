@@ -59,7 +59,7 @@ PAYLOAD_INDEX = 1
 
 
 #waiting time (float) to receive a packet! (in seconds)
-TIMEOUT = 0.2
+TIMEOUT = 0.4
 
 #Max number of packets receiver can ask for
 MAX_NUM_OF_PACKETS = 15
@@ -81,6 +81,10 @@ fd_list = []
 #counters for retransmitted packets,unacked etc
 retran_packet= 0
 dropped_packets = 0
+
+
+retran_per_time = 0
+dropped_per_time = 0
 
 
 ################################# <RCV> #################################
@@ -265,7 +269,12 @@ def rcv_thread (sock):
 
         #Not a single packet received
         if (missed == num_of_packets):
-            rcv_thread_app_mtx.release()
+
+            #if app waits give it priority
+            if (rcv_app_wait and rcv_next_app_read < rcv_next_waiting):
+                rcv_app_wait_mtx.release()
+            else:
+                rcv_thread_app_mtx.release()
             continue
 
         #Find the first missing packet
@@ -298,7 +307,6 @@ def snd_thread (sock):
     global snd_thread_wait
     global end_of_trans
     global error
-    global retran_packet
     global snd_total_packets
 
     num_of_packets = 1
@@ -319,7 +327,6 @@ def snd_thread (sock):
 
         snd_thread_app_mtx.release()
 
-        tmp_send_counter = 0
         plus = 0
 
         #Send num_of_packets packets
@@ -339,7 +346,6 @@ def snd_thread (sock):
                     sock.Send(snd_buf[snd_next_sending+plus])
 
                     snd_total_packets += 1
-                    tmp_send_counter += 1
 
                     plus += 1
 
@@ -366,9 +372,7 @@ def snd_thread (sock):
         #Wait for ACK
         try:
             ack = packet_receive(sock, ACK_PACKET_SIZE, ACK_ENCODE)[0]
-            print "SND_THREAD: Took ack with seq_num: ", ack[0], "and empty_spaces: ", ack[1]
-
-            retran_packet += snd_next_sending+tmp_send_counter - ack[0]
+            #print "SND_THREAD: Took ack with seq_num: ", ack[0], "and empty_spaces: ", ack[1]
 
             #Update buffer
             for i in xrange (snd_next_sending, ack[0]):
@@ -385,7 +389,6 @@ def snd_thread (sock):
         except TimeError, LengthError:
             #ACK not received
             #send only one packet
-            retran_packet += tmp_send_counter
             print "SND_THREAD: ACK not received"
         except socket.error:
             error = 1
@@ -509,14 +512,12 @@ def netfifo_snd_open(host,port,bufsize):
     global end_of_trans
     global snd_in_buffer
     global snd_buf
-    global retran_packet
     global snd_total_packets
 
     error = 0
     end_of_trans = 0
     snd_in_buffer = 0
     snd_buf = {}
-    retran_packet = 0
     snd_total_packets = 0
 
     #create Server object (writing side)
@@ -584,8 +585,9 @@ def netfifo_snd_close(fd):
     global end_of_trans
     global snd_thread_wait
     global retran_packet
+    global retran_per_time
     global snd_total_packets
-	global snd_next_sending
+    global snd_next_sending
 
     snd_thread_app_mtx.acquire()
     if (error):
@@ -608,10 +610,12 @@ def netfifo_snd_close(fd):
     snd_thread_app_mtx.release()
 
     close_mtx.acquire()
-
+    
+    
+    retran_packet = snd_total_packets - snd_next_sending + 1
+    retran_per_time = retran_packet - retran_per_time
     print 'Total Send packets !!!! ---->', snd_total_packets
-    print 'Retrans packets !!!!!!---->', snd_total_packets - snd_next_sending + 1
-
+    print 'Retrans packets !!!!!!---->', retran_per_time
     sock.Close()
 
     del fd_list[fd]

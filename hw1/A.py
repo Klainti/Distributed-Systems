@@ -11,20 +11,24 @@ host = raw_input('host\'s IP: ')
 port = 10000
 
 file_list = ['file10k.txt','file100k.txt','file1000k.txt','file10000k.txt']
-
-#open write pipe
-fd = netfifo_snd_open(host,port,50000)
+#fd = netfifo_snd_open(host,port,50000)
 
 for item in file_list:
     input_fd = open(item,'r')
+    
+    print item
+    #open write pipe
+    fd = netfifo_snd_open(host,port,50000)
 
     data = input_fd.read()
 
     try:
     	netfifo_write(fd,data,len(data))
     except ReceiverError:
-	print "Cant reach Reicever"
+	    print "Cant reach Reicever"
     
     input_fd.close()
 
-netfifo_snd_close(fd)
+    netfifo_snd_close(fd)
+
+#netfifo_snd_close(fd)
