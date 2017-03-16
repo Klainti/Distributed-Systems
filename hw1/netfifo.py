@@ -337,7 +337,7 @@ def snd_thread (sock):
             if (error):
                 snd_thread_app_mtx.release()
                 break
-
+            
             #Next packet is missing (when we send the last packets)
             if (snd_buf.has_key(snd_next_sending+plus)):
                 #Send next packet
@@ -467,7 +467,7 @@ def netfifo_read(fd,size):
 
         rcv_thread_app_mtx.release()
 
-        if (d == ""):
+        if (d == "" and len(s)>0):
             break
 
         s = s + d
