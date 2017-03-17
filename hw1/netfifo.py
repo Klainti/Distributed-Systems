@@ -10,6 +10,7 @@ import socket
 import struct
 import thread
 import time
+import os
 
 
 #Custom Errors
@@ -421,7 +422,11 @@ def netfifo_rcv_open(port,bufsize):
     rcv_buffer_size = max(1,bufsize/DATA_PAYLOAD_SIZE)
 
     #create Server object (reading side)
-    socket_object = SocketServer(socket.AF_INET, socket.SOCK_DGRAM, TIMEOUT, '0.0.0.0', port, 0)
+    socket_object = SocketServer(socket.AF_INET, socket.SOCK_DGRAM, TIMEOUT, '', port, 0)
+
+    print 'IP: ' , socket_object.GetIP(), 
+    print 'Port: ', socket_object.GetPortNumber()
+    
 
     #start the thread
     thread.start_new_thread (rcv_thread, (socket_object, ))
