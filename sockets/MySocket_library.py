@@ -8,6 +8,7 @@
 """
 
 import socket
+import os
 def Hostname():
     return socket.gethostname()
 
@@ -35,6 +36,11 @@ class Socket:
         self.sock.close()
         if self.verbose:print 'SocketUtils:Socket Closed!!'
   
+    def GetPortNumber(self):
+        return self.sock.getsockname()[1]
+
+    def GetIP(self):
+        return os.popen('ifconfig wlan0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
 
     def __str__(self):
         return 'SocketUtils.Socket\nSocket created on Host='+str(self.host)+',Port='+str(self.port)
