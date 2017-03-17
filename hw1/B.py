@@ -10,18 +10,12 @@ import time
 port = 0
 fd = netfifo_rcv_open(port,50000)
 
-output_list = ['output10k.txt','output100k.txt','output1000k.txt','output10000k.txt']
+output_fd = open('output10000k.txt','w')
 
-for i in range(0,4):
+s = netfifo_read(fd,10000000)
 
-    output_fd = open(output_list[i],'w')
+output_fd.write(s)
 
-    s = netfifo_read(fd,10000*(10**i))
-    output_fd.write(s)
+output_fd.close()
 
-    output_fd.close()
-
-print "File closed"
-while(1):
-    pass
-#netfifo_rcv_close(fd)
+netfifo_rcv_close(fd)

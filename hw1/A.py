@@ -10,26 +10,18 @@ import socket
 host = raw_input('host\'s IP: ')
 port = int(raw_input('host\'s port: '))
 
-
-file_list = ['file10k.txt','file100k.txt','file1000k.txt','file10000k.txt']
-#fd = netfifo_snd_open(host,port,50000)
-
-for item in file_list:
-    input_fd = open(item,'r')
+input_fd = open('file10000k.txt','r')
     
-    print item
-    #open write pipe
-    fd = netfifo_snd_open(host,port,50000)
+#open write pipe
+fd = netfifo_snd_open(host,port,50000)
+data = input_fd.read()
 
-    data = input_fd.read()
+try:
+    netfifo_write(fd,data,len(data))
+except ReceiverError:
+    print "Cant reach Reicever"
 
-    try:
-    	netfifo_write(fd,data,len(data))
-    except ReceiverError:
-	    print "Cant reach Reicever"
-    
-    input_fd.close()
+input_fd.close()
 
-    netfifo_snd_close(fd)
+netfifo_snd_close(fd)
 
-#netfifo_snd_close(fd)
