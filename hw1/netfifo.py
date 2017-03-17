@@ -79,13 +79,9 @@ fd_list = []
 
 
 #counters for retransmitted packets,unacked etc
-retran_packet= 0
 dropped_packets = 0
-
-
-retran_per_time = 0
 dropped_per_time = 0
-
+retran_packets = 0 
 
 ################################# <RCV> #################################
 #mutex for app. If the packet it requests isnt in the buffer app_wait = 1 and app_wait_mtx.acquire()
@@ -287,7 +283,7 @@ def rcv_thread (sock):
         #send ACK for next num_of_packets packets
         ack_packet = construct_packet(ACK_ENCODE, rcv_next_waiting, num_of_packets, None)
         sock.SendTo(ack_packet, addr)
-        print "RCV_THREAD: Send ACK with seq number: ", rcv_next_waiting, "and num_of_packets: ", num_of_packets
+        #print "RCV_THREAD: Send ACK with seq number: ", rcv_next_waiting, "and num_of_packets: ", num_of_packets
 
         #if app waits give it priority
         if (rcv_app_wait and rcv_next_app_read < rcv_next_waiting):
@@ -441,6 +437,7 @@ def netfifo_read(fd,size):
     global rcv_app_wait
     global rcv_in_buffer
     global rcv_buffer_size
+    global dropped_per_time
 
     s = ""
 
@@ -468,13 +465,14 @@ def netfifo_read(fd,size):
         rcv_thread_app_mtx.release()
 
         if (d == "" and len(s)>0):
-            break
+           break
 
         s = s + d
         #print "READ_APP: has till now: ", s
 
 
-
+    dropped_per_time = dropped_packets - dropped_per_time
+    print 'wtf!!',  dropped_per_time
     return s
 
 #close reading side
@@ -518,7 +516,7 @@ def netfifo_snd_open(host,port,bufsize):
     end_of_trans = 0
     snd_in_buffer = 0
     snd_buf = {}
-    snd_total_packets = 0
+    #snd_total_packets = 0
 
     #create Server object (writing side)
     socket_object = SocketClient(socket.AF_INET, socket.SOCK_DGRAM, TIMEOUT, 0)
@@ -584,10 +582,9 @@ def netfifo_snd_close(fd):
     global error
     global end_of_trans
     global snd_thread_wait
-    global retran_packet
-    global retran_per_time
     global snd_total_packets
     global snd_next_sending
+    global retran_packets
 
     snd_thread_app_mtx.acquire()
     if (error):
@@ -612,10 +609,10 @@ def netfifo_snd_close(fd):
     close_mtx.acquire()
     
     
-    retran_packet = snd_total_packets - snd_next_sending + 1
-    retran_per_time = retran_packet - retran_per_time
-    print 'Total Send packets !!!! ---->', snd_total_packets
-    print 'Retrans packets !!!!!!---->', retran_per_time
+    #print 'Total Send packets !!!! ---->', snd_total_packets
+    #print 'Retrans packets !!!!!!---->', snd_total_packets - snd_next_sending +1
+    retran_packets = snd_total_packets - snd_next_sending +1
+
     sock.Close()
 
     del fd_list[fd]
