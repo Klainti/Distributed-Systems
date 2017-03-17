@@ -7,7 +7,7 @@ from netfifo import *
 import time
 
 #Recieve 10MB
-port = 10000
+port = 0
 fd = netfifo_rcv_open(port,50000)
 
 output_list = ['output10k.txt','output100k.txt','output1000k.txt','output10000k.txt']

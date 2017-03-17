@@ -8,7 +8,8 @@ from MySocket_library import *
 import socket
 
 host = raw_input('host\'s IP: ')
-port = 10000
+port = int(raw_input('host\'s port: '))
+
 
 file_list = ['file10k.txt','file100k.txt','file1000k.txt','file10000k.txt']
 #fd = netfifo_snd_open(host,port,50000)
