@@ -548,7 +548,6 @@ def netfifo_snd_open(host,port,bufsize):
     #initial buffer
     global snd_buffer_size
     snd_buffer_size = max(1,bufsize/DATA_PAYLOAD_SIZE)
-    print 'buffer size: ', snd_buffer_size
 
     global error
     global end_of_trans

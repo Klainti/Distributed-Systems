@@ -30,21 +30,25 @@ class Socket:
 
         #set timeout for Receive!
         self.sock.settimeout(timeout)
- 
+
     def Close(self):
         if self.verbose:print 'SocketUtils:Closing socket!!'
         self.sock.close()
         if self.verbose:print 'SocketUtils:Socket Closed!!'
-  
+
     def GetPortNumber(self):
         return self.sock.getsockname()[1]
 
     def GetIP(self):
-        return os.popen('ifconfig wlan0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
+        s1 = os.popen('ifconfig wlan0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
+        s2 = os.popen('ifconfig eth0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
+        return s1+s2
+
 
     def __str__(self):
         return 'SocketUtils.Socket\nSocket created on Host='+str(self.host)+',Port='+str(self.port)
-    
+
+
 class SocketServer(Socket):
 
     def __init__(self,family,socket_type,timeout,host,port,verbose):
@@ -58,8 +62,8 @@ class SocketServer(Socket):
             if self.verbose:print self
         except socket.error,msg:
             raise SocketError,msg
-  
-  
+
+
     def Listen(self,msg='Accepted Connection from:'):
         if self.verbose:print 'Listening to port',self.port
         self.sock.listen(1)
@@ -73,7 +77,7 @@ class SocketServer(Socket):
         if self.verbose:print 'Sending data of size ',len(data)
         self.conn.send(data)
         if self.verbose:print 'Data sent!!'
-  
+
     def Receive(self,size):
         if self.verbose:print 'Receiving data...'
         return self.conn.recv(size)
@@ -87,7 +91,7 @@ class SocketServer(Socket):
         self.sock.sendto(data,addr)
 
 
- 
+
 class SocketClient(Socket):
 
     def __init__(self,family,socket_type,timeout,verbose):
@@ -101,14 +105,14 @@ class SocketClient(Socket):
             self.sock.connect((self.rhost,self.rport))
             if self.verbose:print 'Connected !!!'
         except socket.error,msg:
-            raise SocketError,'Connection refused to '+str(self.rhost)+' on port '+str(self.rport)            
+            raise SocketError,'Connection refused to '+str(self.rhost)+' on port '+str(self.rport)
 
 
     def Send(self,data):
         if self.verbose:print 'Sending data of size ',len(data)
         self.sock.send(data)
         if self.verbose:print 'Data sent!!'
-  
+
     def Receive(self,size):
         if self.verbose:print 'Receiving data...'
         return self.sock.recv(size)
@@ -120,4 +124,3 @@ class SocketClient(Socket):
     def SendTo(self,data,host,port):
         if self.verbose:print 'Send data to' + str(host)
         self.sock.sendto(data,(host,port))
-
