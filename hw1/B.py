@@ -7,7 +7,7 @@ from netfifo import *
 import time
 
 file_name = raw_input('File name: ')
-output_fd = open(flie_name,'w')
+output_fd = open(file_name,'w')
 
 port = 0
 fd = netfifo_rcv_open(port,50000)

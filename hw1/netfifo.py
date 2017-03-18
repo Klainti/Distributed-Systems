@@ -79,9 +79,6 @@ error = 0
 fd_list = []
 
 
-#counters for retransmitted packets,unacked etc
-dropped_packets = 0
-retran_packets = 0 
 
 ################################# <RCV> #################################
 #mutex for app. If the packet it requests isnt in the buffer app_wait = 1 and app_wait_mtx.acquire()
@@ -101,9 +98,14 @@ rcv_in_buffer = 0
 #buffer (dictionary [key: payload])
 rcv_buf = {}
 
+#Receiver's Buffer size
 rcv_buffer_size = 0
 
+#counter for total received packets
 rcv_total_packets = 0
+
+#counter for dropped packets
+rcv_dropped_packets = 0
 ################################# </RCV> #################################
 
 
@@ -129,8 +131,10 @@ snd_in_buffer = 0
 #buffer (dictionary [key: payload])
 snd_buf = {}
 
+#Sender's buffer size
 snd_buffer_size = 0
 
+#counter for total send packets
 snd_total_packets = 0
 ################################# </SEND> #################################
 
@@ -199,15 +203,21 @@ def rcv_thread (sock):
     global rcv_next_app_read
     global rcv_in_buffer
     global rcv_buffer_size
-    global dropped_packets
+    global rcv_dropped_packets
     global rcv_total_packets
 
+    #The first time wait dor only one packet
     num_of_packets = 1
 
+
+    #The only way to exti while is by closing receiver (end_of_trans)
     while (True):
 
+        #Number o f packets we didn't receive
         missed = 0
 
+
+        #Try to receive num_of_packets packets
         for p in xrange (num_of_packets):
 
 	        #check for close
@@ -229,6 +239,7 @@ def rcv_thread (sock):
 
             rcv_thread_app_mtx.acquire()
 
+
             #Check if packet key is within window [rcv_next_waiting - rcv_next_waiting + num_of_packets] and buffer has empty space in order to save its
             if (data[NPACKET_INDEX] >= rcv_next_waiting and data[NPACKET_INDEX] <= rcv_next_waiting + num_of_packets and data[NPACKET_INDEX]-rcv_next_waiting < rcv_buffer_size-rcv_in_buffer):
 
@@ -240,17 +251,19 @@ def rcv_thread (sock):
                     if (data[NPACKET_INDEX] == rcv_next_waiting + 1 and rcv_buf.has_key(rcv_next_waiting)):
                         rcv_next_waiting += 1
 
+                    #Update counter
                     rcv_in_buffer += 1
+
                     #print "Rcv_thread: Received packet" ,data[NPACKET_INDEX] , "(in:", rcv_in_buffer, ")"
                     #print "Rec Buffer:", rcv_buf, "(", len(rcv_buf), ")"
 
 
                 else: #already in buffer
-                    dropped_packets += 1
+                    rcv_dropped_packets += 1
 
 
             else: #buffer full
-                dropped_packets += 1
+                rcv_dropped_packets += 1
 
 
             rcv_thread_app_mtx.release()
@@ -272,23 +285,27 @@ def rcv_thread (sock):
                 rcv_thread_app_mtx.release()
             continue
 
+
         #Find the first missing packet
         while (rcv_buf.has_key(rcv_next_waiting)):
             rcv_next_waiting += 1
 
 
-        #In case buffer is full we send 1 empty space instead of 0
+        #In case buffer is full we send 1 empty space instead of 0 --- else we send at most MAX_NUM_OF_PACKETS empty spaces
         num_of_packets = min(MAX_NUM_OF_PACKETS, max(1, rcv_buffer_size - rcv_in_buffer))
         #send ACK for next num_of_packets packets
         ack_packet = construct_packet(ACK_ENCODE, rcv_next_waiting, num_of_packets, None)
         sock.SendTo(ack_packet, addr)
         #print "RCV_THREAD: Send ACK with seq number: ", rcv_next_waiting, "and num_of_packets: ", num_of_packets
 
+
         #if app waits give it priority
         if (rcv_app_wait and rcv_next_app_read < rcv_next_waiting):
             rcv_app_wait_mtx.release()
         else:
             rcv_thread_app_mtx.release()
+
+
 
     rcv_thread_app_mtx.release()
     print 'End of Receiving!'
@@ -304,8 +321,11 @@ def snd_thread (sock):
     global error
     global snd_total_packets
 
+
+    #The first time send only one packet
     num_of_packets = 1
 
+    #The only way to exit while is by closing sender or if an error occur
     while (True):
 
 
@@ -322,6 +342,7 @@ def snd_thread (sock):
 
         snd_thread_app_mtx.release()
 
+
         plus = 0
 
         #Send num_of_packets packets
@@ -332,22 +353,21 @@ def snd_thread (sock):
             if (error):
                 snd_thread_app_mtx.release()
                 break
-            
+
             #Next packet is missing (when we send the last packets)
             if (snd_buf.has_key(snd_next_sending+plus)):
                 #Send next packet
                 try:
                     #print "SND_THREAD: Sending packet", snd_next_sending+i
                     sock.Send(snd_buf[snd_next_sending+plus])
-
                     snd_total_packets += 1
-
                     plus += 1
 
                 except socket.error:
                     error = 1
                     end_of_trans = 1
 
+                    #Wake app if is blocked and exit
                     if (snd_app_wait == 1):
                         snd_app_wait=0
                         snd_app_wait_mtx.release()
@@ -361,6 +381,7 @@ def snd_thread (sock):
 
         snd_thread_app_mtx.acquire()
 
+        #exit if error occured
         if (error):
             break
 
@@ -378,23 +399,29 @@ def snd_thread (sock):
             snd_next_sending = ack[0]
             num_of_packets = ack[1]
 
+            #All packets have been send so we can exit
             if (end_of_trans and snd_in_buffer == 0):
                 break
 
         except TimeError, LengthError:
+            pass
             #ACK not received
             #send only one packet
             #print "SND_THREAD: ACK not received"
         except socket.error:
+            #socket.error == unreachable Receiver
+            #So we exit
             error = 1
             end_of_trans = 1
 
+            #Wake app if is blocked and exit
             if (snd_app_wait == 1):
                 snd_app_wait=0
                 snd_app_wait_mtx.release()
 
             break
 
+        #Wake app if is blocked
         if (snd_app_wait == 1):
             snd_app_wait=0
             snd_app_wait_mtx.release()
@@ -422,9 +449,10 @@ def netfifo_rcv_open(port,bufsize):
     #create Server object (reading side)
     socket_object = SocketServer(socket.AF_INET, socket.SOCK_DGRAM, TIMEOUT, '', port, 0)
 
-    print 'IP: ' , socket_object.GetIP(), 
+    #print Receiver's Informations
+    print 'IP: ' , socket_object.GetIP(),
     print 'Port: ', socket_object.GetPortNumber()
-    
+
 
     #start the thread
     thread.start_new_thread (rcv_thread, (socket_object, ))
@@ -441,11 +469,11 @@ def netfifo_read(fd,size):
     global rcv_in_buffer
     global rcv_buffer_size
 
+    #Returning value
     s = ""
 
-    #while (len(s) < min(rcv_buffer_size*DATA_PAYLOAD_SIZE, size/DATA_PAYLOAD_SIZE * DATA_PAYLOAD_SIZE)):
-
     while (len(s) <= size):
+
         #app wants to read packet next_app_read
         rcv_thread_app_mtx.acquire()
 
@@ -458,49 +486,56 @@ def netfifo_read(fd,size):
             rcv_app_wait = 0
 
 
+        #Get next packet from buffer and delete it
         d = rcv_buf[rcv_next_app_read]
         del rcv_buf[rcv_next_app_read]
         rcv_next_app_read += 1
         rcv_in_buffer -= 1
-        
-        if (rcv_next_app_read%2000 == 0):
+
+
+        #Occasional garbage collector
+        if (rcv_next_app_read%1000 == 0):
             for k in (rcv_buf.keys()):
                 if (k < rcv_next_app_read):
                     del rcv_buf[k]
                     rcv_in_buffer -= 1
-        
+
 
         #print "READ_APP: got packet", rcv_next_app_read-1
 
         rcv_thread_app_mtx.release()
 
+        #Reveived empty packet which means end of transmision so exit
         if (d == "" and len(s)>0):
             break
 
+        #update value of s
         s = s + d
         #print "READ_APP: has till now: ", s
 
-
-    
     return s
 
 #close reading side
 def netfifo_rcv_close(fd):
 
     global end_of_trans
-    global dropped_packets
+    global rcv_dropped_packets
     global rcv_total_packets
 
     sock = fd_list[fd]
 
+    #Update end_of_trans in order to inform thread and app
     rcv_thread_app_mtx.acquire()
     end_of_trans=1
     rcv_thread_app_mtx.release()
 
     close_mtx.acquire()
 
+
+    #Print measurements
     print 'Total Received packets !!!! ---->', rcv_total_packets
-    print 'Dropped packets !!!! ---->', dropped_packets
+    print 'Dropped packets !!!! ---->', rcv_dropped_packets
+
     sock.Close()
 
 
@@ -521,13 +556,14 @@ def netfifo_snd_open(host,port,bufsize):
     global snd_buf
     global snd_total_packets
 
+
+    #Initialize Sender's variables
     error = 0
     end_of_trans = 0
     snd_in_buffer = 0
     snd_buf = {}
-    #snd_total_packets = 0
 
-    #create Server object (writing side)
+    #create Client object (writing side)
     socket_object = SocketClient(socket.AF_INET, socket.SOCK_DGRAM, TIMEOUT, 0)
     socket_object.Connect(host,port)
 
@@ -549,15 +585,17 @@ def netfifo_write(fd,buf,size):
     global snd_app_wait
     global error
 
+
     for s in xrange (0, size, DATA_PAYLOAD_SIZE):
 
-
+        #Create next packet
         packet = construct_packet(DATA_ENCODE,snd_next_app_write, buf[s: s+ DATA_PAYLOAD_SIZE],len(buf[s: s+ DATA_PAYLOAD_SIZE]))
 
         snd_thread_app_mtx.acquire()
 
         #print "WRITE_APP: tries to add packet", snd_next_app_write
 
+        #Wait till buffer has empty space
         while (snd_in_buffer == snd_buffer_size and (not error)):
             #print "WRITE_APP: waits for empty position"
             snd_app_wait = 1
@@ -565,18 +603,23 @@ def netfifo_write(fd,buf,size):
             snd_app_wait_mtx.acquire()
             snd_thread_app_mtx.acquire()
 
+        #Check if error occured and exit
         if (error):
             snd_thread_app_mtx.release()
             raise ReceiverError ("Unreachable Receiver")
             break
 
+        #Insert new packet in buffer
         snd_buf.update ({snd_next_app_write: packet})
 
+
+        #Update variables
         snd_next_app_write += 1
         snd_in_buffer += 1
 
         #print "WRITE_APP: added packet", snd_next_app_write-1,"(in:", snd_in_buffer, ")"
 
+        #Wake thread if is blocked
         if (snd_thread_wait == 1):
             snd_thread_wait=0
             snd_thread_wait_mtx.release()
@@ -593,8 +636,8 @@ def netfifo_snd_close(fd):
     global snd_thread_wait
     global snd_total_packets
     global snd_next_sending
-    global retran_packets
 
+    #Check if thread is already closed because of an error
     snd_thread_app_mtx.acquire()
     if (error):
         del fd_list[fd]
@@ -602,22 +645,26 @@ def netfifo_snd_close(fd):
         return
     snd_thread_app_mtx.release()
 
+
     sock = fd_list[fd]
+
 
     netfifo_write (fd, "", 1)
 
     snd_thread_app_mtx.acquire()
 
+    #Update end_of_trans
     end_of_trans = 1
 
+    #Wake thread if is blocked
     if (snd_thread_wait == 1):
         snd_thread_wait_mtx.release()
 
     snd_thread_app_mtx.release()
 
     close_mtx.acquire()
-    
-    
+
+    #Print measurements
     print 'Retrans packets !!!!!!---->', snd_total_packets - snd_next_sending +1
 
     sock.Close()
