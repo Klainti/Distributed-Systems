@@ -9,8 +9,8 @@ import socket
 
 host = raw_input('host\'s IP: ')
 port = int(raw_input('host\'s port: '))
-
-input_fd = open('file10000k.txt','r')
+file_name = raw_input('File name: ')
+input_fd = open(flie_name,'r')
     
 #open write pipe
 fd = netfifo_snd_open(host,port,50000)
