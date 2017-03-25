@@ -51,18 +51,20 @@ while (not connection_complete):
         print 'Try connecting to IP: %s, port: %d' %(ipaddr,port)
         tcp_socket.connect((ipaddr,port))
 
+
+        #Check if connection establish!
         try:
             msg = tcp_socket.recv(5)
-            print "Received:", msg
         except socket.error:
-            print "Phra mpoulo"
+            print "Connection failed. Try again!"
             tcp_socket.close()
+
+            #delete and create a new tcp socket!
             tcp_socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
             tcp_socket.settimeout(TIMEOUT)
             continue
 
-        print tcp_socket.getsockname()
-        print tcp_socket.getpeername()
+        print 'Server: %s connected to : %s' % (tcp_socket.getsockname(),tcp_socket.getpeername())
         print 'Connection complete'
         connection_complete = True
     except socket.timeout:

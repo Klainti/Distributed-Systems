@@ -20,6 +20,7 @@ def set_discover_multicast(ipaddr,port):
     #Create TCP socket
     tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     tcp_socket.bind((ipaddr,port))
+    port = tcp_socket.getsockname()[1]
     tcp_socket.settimeout(TIMEOUT)
 
     server_connection = False
@@ -45,4 +46,4 @@ def set_discover_multicast(ipaddr,port):
     udp_sock.close()
     tcp_socket.close()
 
-set_discover_multicast('127.0.0.1',int(raw_input('Give port:')))
+set_discover_multicast('127.0.0.1',0)
