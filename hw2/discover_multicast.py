@@ -11,7 +11,7 @@ ENCODING='!16si'
 TIMEOUT = 0.2
 
 def set_discover_multicast(ipaddr,port):
-
+    
     multicast_group = (MULTI_IP,MULTI_PORT)
     
     #Create the datagram socket
@@ -44,4 +44,4 @@ def set_discover_multicast(ipaddr,port):
     udp_sock.close()
     tcp_socket.close()
 
-set_discover_multicast('192.168.10.7',53453)
+set_discover_multicast('127.0.0.1',int(raw_input('Give port:')))
