@@ -46,13 +46,24 @@ while (not connection_complete):
 
     #remove null bytes!
     ipaddr = ipaddr.rstrip('\0')
-    
+
     try:
         print 'Try connecting to IP: %s, port: %d' %(ipaddr,port)
         tcp_socket.connect((ipaddr,port))
+
+        try:
+            msg = tcp_socket.recv(5)
+            print "Received:", msg
+        except socket.error:
+            print "Phra mpoulo"
+            tcp_socket.close()
+            tcp_socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+            tcp_socket.settimeout(TIMEOUT)
+            continue
+
         print tcp_socket.getsockname()
-        print 'Connection complete'   
+        print tcp_socket.getpeername()
+        print 'Connection complete'
         connection_complete = True
     except socket.timeout:
         print 'Trying again to connect!'
-

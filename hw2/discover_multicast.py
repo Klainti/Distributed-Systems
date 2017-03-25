@@ -11,9 +11,9 @@ ENCODING='!16si'
 TIMEOUT = 0.2
 
 def set_discover_multicast(ipaddr,port):
-    
+
     multicast_group = (MULTI_IP,MULTI_PORT)
-    
+
     #Create the datagram socket
     udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
@@ -32,12 +32,13 @@ def set_discover_multicast(ipaddr,port):
             sent = udp_sock.sendto(packet,multicast_group)
 
             try:
-                tcp_socket.listen(1)                
+                tcp_socket.listen(1)
                 conn, addr = tcp_socket.accept()
+                #conn.send ("Hello")
                 print 'Connected at: %s' % str(addr)
                 server_connection = True
             except socket.timeout:
-                print 'Time out, no connection occur'  
+                print 'Time out, no connection occur'
         finally:
             pass
 
