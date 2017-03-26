@@ -1,6 +1,8 @@
 import socket
 import struct
 import sys
+import thread
+import time
 from packet_struct import *
 
 
@@ -9,6 +11,22 @@ MULTI_PORT = 10000
 
 ENCODING='!16si'
 TIMEOUT = 0.2
+
+server_list = []
+server_list_lock = thread.allocate_lock()
+
+def send_data():
+
+    while(1):
+        
+        server_list_lock.acquire()
+        tmp_list = server_list
+        server_list_lock.release()
+
+        for s in tmp_list:
+            time.sleep(2)
+            s.send('Hello from %d' % s.getsockname()[1])
+
 
 def set_discover_multicast(ipaddr,port):
 
@@ -35,7 +53,12 @@ def set_discover_multicast(ipaddr,port):
             try:
                 tcp_socket.listen(1)
                 conn, addr = tcp_socket.accept()
-                #conn.send ("Hello")
+                conn.send('Hello')
+
+                server_list_lock.acquire()
+                server_list.append(conn)
+                server_list_lock.release()
+
                 print 'Connected at: %s' % str(addr)
                 server_connection = True
             except socket.timeout:
@@ -43,7 +66,7 @@ def set_discover_multicast(ipaddr,port):
         finally:
             pass
 
-    udp_sock.close()
-    tcp_socket.close()
-
+thread.start_new_thread(send_data,())
 set_discover_multicast('127.0.0.1',0)
+while(1):
+    pass
