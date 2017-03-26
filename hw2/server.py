@@ -18,28 +18,27 @@ def establish_connection(client_addr):
 
     try:
         print 'Try connecting to IP: %s, port: %d' %(client_addr[0],client_addr[1])
-	tcp_socket.connect(client_addr)
+        tcp_socket.connect(client_addr)
 
 
-	#Check if connection establish!
-	try:
-	    msg = tcp_socket.recv(5)
-            print msg
+        #Check if connection establish!
+        try:
+            msg = tcp_socket.recv(5)
             print 'Server: %s connected to : %s' % (tcp_socket.getsockname(),tcp_socket.getpeername())
-	    print 'Connection complete'
+            print 'Connection complete'
             return tcp_socket
-
-	except socket.error:
-	    print "Connection failed. Try again!"
-
-
-	    tcp_socket.close()
+        except socket.error:
+            print "Connection failed. Try again!"
+            tcp_socket.close()
             return None
 
     except socket.timeout:
-	print 'Timeout!! Try again to connect!'
+        print 'Timeout!! Try again to connect!'
         return establish_connection(client_addr)
-
+    except socket.error:
+        print "Connection failed. Try again!"
+        tcp_socket.close()
+        return None
 
 #Receive from multicast and tries to connect with a client
 def search_for_clients():
@@ -64,7 +63,7 @@ def search_for_clients():
 
 # Receive packets from connections (clients)
 def receive_from_clients():
-    
+
     global connection_buffer
 
     while(1):
