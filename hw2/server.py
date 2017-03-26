@@ -1,71 +1,45 @@
 import socket
-import struct
-import sys
 from packet_struct import *
+from multicast_module import *
 
-DECODING='!16si'
-TIMEOUT = 0.2
+#Receive from multicast and tries to connect with a client
+def search_for_clients():
 
-MULTI_IP = '224.3.29.71'
-MULTI_PORT = 10000
+    udp_socket = socket_for_multicast()
 
-# Tell the operating system to add the socket to the multicast group
-# on all interfaces.
-def socket_to_OS_multicast(sock):
+    #Create the TCP socket
+    tcp_socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+    tcp_socket.settimeout(TIMEOUT)
 
-    group = socket.inet_aton(MULTI_IP)
-    mreq = struct.pack('4sL', group, socket.INADDR_ANY)
-    sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+    # Try to connect with a client
+    connection_complete = False
+    while (not connection_complete):
 
+        # wait for a client
+        client_addr = receive_from_multicast(udp_socket)
 
-
-udp_server_address = ('', MULTI_PORT)
-
-# Create the UDP socket
-udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-# Allow multiple copies of this program on one machine
-udp_sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
-
-# Bind to the server address
-udp_sock.bind(udp_server_address)
-
-#Update OS multicast group
-socket_to_OS_multicast(udp_sock)
-
-#Create the TCP socket
-tcp_socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-tcp_socket.settimeout(TIMEOUT)
-
-# Try to connect with a client
-connection_complete = False
-while (not connection_complete):
-    print ('waiting to receive client from multicast!')
-    packet, address = udp_sock.recvfrom(1024)
-    ipaddr, port = deconstruct_packet(DECODING,packet)
-
-    #remove null bytes!
-    ipaddr = ipaddr.rstrip('\0')
-
-    try:
-        print 'Try connecting to IP: %s, port: %d' %(ipaddr,port)
-        tcp_socket.connect((ipaddr,port))
-
-
-        #Check if connection establish!
         try:
-            msg = tcp_socket.recv(5)
-        except socket.error:
-            print "Connection failed. Try again!"
-            tcp_socket.close()
+            print 'Try connecting to IP: %s, port: %d' %(client_addr[0],client_addr[1])
+	    tcp_socket.connect(client_addr)
 
-            #delete and create a new tcp socket!
-            tcp_socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-            tcp_socket.settimeout(TIMEOUT)
-            continue
 
-        print 'Server: %s connected to : %s' % (tcp_socket.getsockname(),tcp_socket.getpeername())
-        print 'Connection complete'
-        connection_complete = True
-    except socket.timeout:
-        print 'Trying again to connect!'
+	    #Check if connection establish!
+	    try:
+	        msg = tcp_socket.recv(5)
+	    except socket.error:
+	        print "Connection failed. Try again!"
+	        tcp_socket.close()
+
+    	        #delete and create a new tcp socket!
+    	        tcp_socket = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+    	        tcp_socket.settimeout(TIMEOUT)
+    	        continue
+
+	    print 'Server: %s connected to : %s' % (tcp_socket.getsockname(),tcp_socket.getpeername())
+	    print 'Connection complete'
+	    connection_complete = True
+
+	except socket.timeout:
+	    print 'Trying again to connect!'
+
+search_for_clients()
