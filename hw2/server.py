@@ -1,6 +1,7 @@
 import socket
 import thread
 import time
+import select
 from packet_struct import *
 from multicast_module import *
 
@@ -23,12 +24,15 @@ def establish_connection(client_addr):
 	#Check if connection establish!
 	try:
 	    msg = tcp_socket.recv(5)
+            print msg
             print 'Server: %s connected to : %s' % (tcp_socket.getsockname(),tcp_socket.getpeername())
 	    print 'Connection complete'
             return tcp_socket
 
 	except socket.error:
 	    print "Connection failed. Try again!"
+
+
 	    tcp_socket.close()
             return None
 
@@ -58,12 +62,31 @@ def search_for_clients():
             connection_buffer.append(tcp_socket)
             connection_buffer_lock.release()
 
+# Receive packets from connections (clients)
+def receive_from_clients():
+    
+    global connection_buffer
+
+    while(1):
+
+        # take a copy of connections!
+        connection_buffer_lock.acquire()
+        clients = connection_buffer
+        connection_buffer_lock.release()
+
+        # receive over multiple sockets!
+        if (len(clients)):
+            readable,_,_  = select.select(clients, [], [])
+
+            for sock in readable:
+                data, addr = sock.recvfrom(1024)
+                print 'Received data: %s' % data
+
 #Spawn a thread to search for clients and to establish connection!
 thread.start_new_thread(search_for_clients,())
 
-while (1):
-    time.sleep(2)
-    connection_buffer_lock.acquire()
-    print connection_buffer
-    connection_buffer_lock.release()
+#Spawn a thread to receive requests from clients
+thread.start_new_thread(receive_from_clients,())
 
+while(1):
+    pass
