@@ -1,6 +1,13 @@
 import socket
+import thread
+import time
 from packet_struct import *
 from multicast_module import *
+
+# includes all tcp connections with clients
+connection_buffer = []
+connection_buffer_lock = thread.allocate_lock()
+
 
 def establish_connection(client_addr):
 
@@ -33,6 +40,8 @@ def establish_connection(client_addr):
 #Receive from multicast and tries to connect with a client
 def search_for_clients():
 
+    global connection_buffer
+
     udp_socket = socket_for_multicast()
 
     # Try to connect with a client
@@ -43,4 +52,18 @@ def search_for_clients():
 
         tcp_socket = establish_connection(client_addr)
 
-search_for_clients()
+        # Add the connection to buffer!
+        if (tcp_socket is not None):
+            connection_buffer_lock.acquire()
+            connection_buffer.append(tcp_socket)
+            connection_buffer_lock.release()
+
+#Spawn a thread to search for clients and to establish connection!
+thread.start_new_thread(search_for_clients,())
+
+while (1):
+    time.sleep(2)
+    connection_buffer_lock.acquire()
+    print connection_buffer
+    connection_buffer_lock.release()
+
