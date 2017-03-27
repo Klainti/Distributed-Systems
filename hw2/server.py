@@ -7,8 +7,18 @@ from multicast_module import *
 from sys import exit
 
 # includes all tcp connections with clients
-connection_buffer = []
+connection_buffer = {}
 connection_buffer_lock = thread.allocate_lock()
+
+
+###################/Receiver/###################
+request_buffer = []
+
+request_buffer_lock = thread.allocate_lock()
+
+#timeout for select.select
+TIMEOUT = 0.2
+
 
 ''' Register and Unregister a service for a server'''
 
@@ -32,6 +42,23 @@ def unregister(svcid):
         return 1
 
     return 0
+
+# Add a client to connection buffer
+def add_client(sock,svcid):
+
+    connection_buffer_lock.acquire()
+
+    if (svcid not in connection_buffer.keys()):
+        connection_buffer[svcid] = [sock]
+    else:
+        # no connection for this svcid!
+        if (connection_buffer[svcid] == []):
+           connection_buffer[svcid] = [sock]
+        else:
+            connection_buffer[svcid].append(sock)
+
+    connection_buffer_lock.release()
+
 
 def establish_connection(client_ip,client_port):
 
@@ -88,10 +115,7 @@ def search_for_clients():
             connection_buffer.append(tcp_socket)
             connection_buffer_lock.release()
 
-# Receive packets from connections (clients)
-def receive_from_clients():
-
-    global connection_buffer
+def receive_from_clients_thread():
 
     while(1):
 
@@ -102,7 +126,7 @@ def receive_from_clients():
 
         # receive over multiple sockets!
         if (len(clients)):
-            readable,_,_  = select.select(clients, [], [])
+            readable,_,_  = select.select(clients, [], [],TIMEOUT)
 
             for sock in readable:
                 data, addr = sock.recvfrom(1024)
@@ -115,6 +139,8 @@ def receive_from_clients():
                 else:
                     print 'Received data: %s' % data
 
+
+
 if (not register(1)):
     print 'Register service failed'
     exit(0)
@@ -123,7 +149,7 @@ if (not register(1)):
 thread.start_new_thread(search_for_clients,())
 
 #Spawn a thread to receive requests from clients
-thread.start_new_thread(receive_from_clients,())
+thread.start_new_thread(receive_from_clients_thread,())
 
 while(1):
     pass
