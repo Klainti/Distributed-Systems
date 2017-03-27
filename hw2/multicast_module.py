@@ -4,7 +4,7 @@ from packet_struct import *
 import socket
 
 
-DECODING='!16si'
+DECODING='!16sii'
 TIMEOUT = 0.2
 
 MULTI_IP = '224.3.29.71'
@@ -35,17 +35,17 @@ def socket_for_multicast():
     socket_to_OS_multicast_group(sock)
     return sock
 
-# Receive from multicast, return client address (IP,port)
+# Receive from multicast, return client address (IP,port) and service (svcid)
 def receive_from_multicast(sock):
 
     print ('waiting to receive client from multicast!')
     packet, address = sock.recvfrom(1024)
-    ipaddr, port = deconstruct_packet(DECODING,packet)
+    ipaddr, port, svcid = deconstruct_packet(DECODING,packet)
 
     #remove null bytes!
     ipaddr = ipaddr.rstrip('\0')
 
-    return (ipaddr,port)
+    return (ipaddr,port, svcid)
 
 
 
