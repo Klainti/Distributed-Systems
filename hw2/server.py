@@ -7,12 +7,17 @@ from multicast_module import *
 from sys import exit
 
 # includes all tcp connections with clients
+# a dict to map sockets to services
 connection_buffer = {}
+
+# only sockets!
+connection_list = []
+
 connection_buffer_lock = thread.allocate_lock()
 
 
 ###################/Receiver/###################
-request_buffer = []
+request_buffer = {}
 
 request_buffer_lock = thread.allocate_lock()
 
@@ -48,6 +53,10 @@ def add_client(sock,svcid):
 
     connection_buffer_lock.acquire()
 
+    # update connection_list
+    connection_list.append(sock)
+    
+    # update connection_buffer
     if (svcid not in connection_buffer.keys()):
         connection_buffer[svcid] = [sock]
     else:
@@ -59,6 +68,28 @@ def add_client(sock,svcid):
 
     connection_buffer_lock.release()
 
+def remove_client(sock):
+    
+    connection_buffer_lock.acquire()
+
+    sock.close()
+    # update connection list
+    connection_list.remove(sock)
+
+    # update connection_buffer
+    for key in connection_buffer.keys():
+        if (sock in connection_buffer[key]):
+            connection_buffer[key].remove(sock)
+            break
+
+    connection_buffer_lock.release()
+
+# Add a request to the request buffer!
+'''def add_request():
+
+    request_buffer_lock.acquire()
+    if ()
+'''
 
 def establish_connection(client_ip,client_port):
 
@@ -93,8 +124,6 @@ def establish_connection(client_ip,client_port):
 #Receive from multicast and tries to connect with a client
 def search_for_clients():
 
-    global connection_buffer
-
     udp_socket = socket_for_multicast()
 
     # Try to connect with a client
@@ -111,9 +140,7 @@ def search_for_clients():
 
         # Add the connection to buffer!
         if (tcp_socket is not None):
-            connection_buffer_lock.acquire()
-            connection_buffer.append(tcp_socket)
-            connection_buffer_lock.release()
+            add_client(tcp_socket,client_demand_svc)
 
 def receive_from_clients_thread():
 
@@ -121,7 +148,7 @@ def receive_from_clients_thread():
 
         # take a copy of connections!
         connection_buffer_lock.acquire()
-        clients = connection_buffer
+        clients = connection_list
         connection_buffer_lock.release()
 
         # receive over multiple sockets!
@@ -132,10 +159,7 @@ def receive_from_clients_thread():
                 data, addr = sock.recvfrom(1024)
                 if (data == ""):
                     print sock.getpeername(), "Unreachable"
-                    sock.close()
-                    connection_buffer_lock.acquire()
-                    connection_buffer.remove(sock)
-                    connection_buffer_lock.release()
+                    remove_client(sock)
                 else:
                     print 'Received data: %s' % data
 
