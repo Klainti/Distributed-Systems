@@ -79,7 +79,14 @@ def receive_from_clients():
 
             for sock in readable:
                 data, addr = sock.recvfrom(1024)
-                print 'Received data: %s' % data
+                if (data == ""):
+                    print sock.getpeername(), "Unreachable"
+                    sock.close()
+                    connection_buffer_lock.acquire()
+                    connection_buffer.remove(sock)
+                    connection_buffer_lock.release()
+                else:
+                    print 'Received data: %s' % data
 
 #Spawn a thread to search for clients and to establish connection!
 thread.start_new_thread(search_for_clients,())

@@ -17,14 +17,16 @@ server_list_lock = thread.allocate_lock()
 
 def send_data():
 
+    s_time = float(raw_input("Sleep time > "))
+
     while(1):
-        
+
         server_list_lock.acquire()
         tmp_list = server_list
         server_list_lock.release()
 
         for s in tmp_list:
-            time.sleep(2)
+            time.sleep(s_time)
             s.send('Hello from %d' % s.getsockname()[1])
 
 
