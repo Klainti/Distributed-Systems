@@ -17,12 +17,12 @@ service_buffer = []
 
 #On success register(append to buffer) return 1, otherwise 0
 def register(svcid):
-    
+
     if (svcid not in service_buffer):
         service_buffer.append(svcid)
         return 1
-    
-    return 0 
+
+    return 0
 
 #On success unregister(delete from buffer) return 1, otherwise 0
 def unregister(svcid):
@@ -76,7 +76,7 @@ def search_for_clients():
         # wait for a client
         client_ip, client_port, client_demand_svc = receive_from_multicast(udp_socket)
 
-        #check the service which client looking for 
+        #check the service which client looking for
         if (client_demand_svc in service_buffer):
             tcp_socket = establish_connection(client_ip,client_port)
         else:
@@ -105,15 +105,16 @@ def receive_from_clients():
             readable,_,_  = select.select(clients, [], [])
 
             for sock in readable:
-                data, addr = sock.recvfrom(1024)
-                if (data == ""):
+                packet, addr = sock.recvfrom(1024)
+                if (packet == ""):
                     print sock.getpeername(), "Unreachable"
                     sock.close()
                     connection_buffer_lock.acquire()
                     connection_buffer.remove(sock)
                     connection_buffer_lock.release()
                 else:
-                    print 'Received data: %s' % data
+                    data, reqid = deconstruct_packet (REQ_ENCODING, packet)
+                    print 'Received data:', data, reqid
 
 if (not register(1)):
     print 'Register service failed'
