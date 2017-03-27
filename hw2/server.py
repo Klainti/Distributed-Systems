@@ -24,7 +24,6 @@ request_buffer_lock = thread.allocate_lock()
 #timeout for select.select
 TIMEOUT = 0.2
 
-
 ''' Register and Unregister a service for a server'''
 
 service_buffer = []
@@ -92,6 +91,7 @@ def map_sock_to_service(sock):
             return key
 
     connection_buffer_lock.release()
+    return None
 
 # Add a request to the request buffer!
 def add_request(sock, svcid):
@@ -106,6 +106,25 @@ def add_request(sock, svcid):
     print request_buffer
     request_buffer_lock.release()
 
+def get_sock_from_requests(svcid):
+
+    request_buffer_lock.acquire()
+
+    if (svcid in request_buffer.keys()):
+        if (request_buffer[key]==[]):
+            request_buffer_lock.release()
+            return None
+        else:
+            request = request_buffer[key][0]
+
+            #update request buffer
+            del request_buffer[key][0]
+        
+            request_buffer_lock.release()
+            return request
+
+    request_buffer_lock.release()
+    return None
 
 def establish_connection(client_ip,client_port):
 
