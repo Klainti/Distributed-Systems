@@ -60,11 +60,7 @@ def add_client(sock,svcid):
     if (svcid not in connection_buffer.keys()):
         connection_buffer[svcid] = [sock]
     else:
-        # no connection for this svcid!
-        if (connection_buffer[svcid] == []):
-           connection_buffer[svcid] = [sock]
-        else:
-            connection_buffer[svcid].append(sock)
+        connection_buffer[svcid].append(sock)
 
     connection_buffer_lock.release()
 
@@ -84,12 +80,32 @@ def remove_client(sock):
 
     connection_buffer_lock.release()
 
+# search in which service a sock belong!
+def map_sock_to_service(sock):
+
+    connection_buffer_lock.acquire()
+
+    for key in connection_buffer.keys():
+
+        if (sock in connection_buffer[key]):
+            connection_buffer_lock.release()
+            return key
+
+    connection_buffer_lock.release()
+
 # Add a request to the request buffer!
-'''def add_request():
+def add_request(sock, svcid):
 
     request_buffer_lock.acquire()
-    if ()
-'''
+
+    if (svcid not in request_buffer.keys()):
+        request_buffer[svcid] = [sock]
+    else:
+        request_buffer[svcid].append(sock)
+
+    print request_buffer
+    request_buffer_lock.release()
+
 
 def establish_connection(client_ip,client_port):
 
@@ -161,6 +177,8 @@ def receive_from_clients_thread():
                     print sock.getpeername(), "Unreachable"
                     remove_client(sock)
                 else:
+                    svcid = map_sock_to_service(sock)
+                    add_request(sock,svcid)
                     print 'Received data: %s' % data
 
 
