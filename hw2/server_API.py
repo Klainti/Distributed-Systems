@@ -237,11 +237,11 @@ def getRequest (svcid,buf,length):
 
     return reqid
 
-#Spawn a thread to search for clients and to establish connection!
-thread.start_new_thread(search_for_clients,())
+# Spawn sender/receiver threads!
+def init():
 
-#Spawn a thread to receive requests from clients
-thread.start_new_thread(receive_from_clients_thread,())
+    #Spawn a thread to search for clients and to establish connection!
+    thread.start_new_thread(search_for_clients,())
 
-while(1):
-    pass
+    #Spawn a thread to receive requests from clients
+    thread.start_new_thread(receive_from_clients_thread,())
