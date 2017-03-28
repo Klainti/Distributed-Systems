@@ -24,6 +24,11 @@ request_buffer = {}
 
 request_buffer_lock = thread.allocate_lock()
 
+
+##################/Sender/#####################
+reqid_to_sock_buffer = {}
+reqid_to_sock_lock = thread.allocate_lock()
+
 #timeout for select.select
 TIMEOUT = 0.2
 
@@ -95,6 +100,18 @@ def map_sock_to_service(sock):
 
     connection_buffer_lock.release()
     return None
+
+def map_reqid_to_sock(reqid,sock):
+
+    reqid_to_sock_lock.acquire()
+
+    if (reqid not in reqid_to_sock_buffer.keys()):
+        reqid_to_sock_buffer[reqid] = sock
+        reqid_to_sock_lock.release()
+        return 1
+
+    reqid_to_sock_lock.release()
+    return 0
 
 # Add a request to the request buffer!
 def add_request(sock, svcid):
@@ -205,10 +222,20 @@ def receive_from_clients_thread():
                     print 'Received data: %s' % dummy_bytes
 
 
+# Return a reqid from reqid_to_sock_buffer
+def getRequest (svcid,buf,length):
 
-if (not register(1)):
-    print 'Register service failed'
-    exit(0)
+    sock , reqid = get_sock_from_requests(svcid)
+
+    # failed to get a request!
+    if (sock == None):
+        return -1
+
+    # Map reqid to sock for reply !
+    if (not map_reqid_to_sock(reqid,sock)):
+        return -1
+
+    return reqid
 
 #Spawn a thread to search for clients and to establish connection!
 thread.start_new_thread(search_for_clients,())
