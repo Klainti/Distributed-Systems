@@ -131,14 +131,14 @@ def get_sock_from_requests(svcid):
     request_buffer_lock.acquire()
 
     if (svcid in request_buffer.keys()):
-        if (request_buffer[key]==[]):
+        if (request_buffer[svcid]==[]):
             request_buffer_lock.release()
             return None
         else:
-            request = request_buffer[key][0]
+            request = request_buffer[svcid][0]
 
             #update request buffer
-            del request_buffer[key][0]
+            del request_buffer[svcid][0]
         
             request_buffer_lock.release()
             return request
@@ -212,11 +212,11 @@ def receive_from_clients_thread():
 
             for sock in readable:
                 packet, addr = sock.recvfrom(1024)
-                dummy_bytes, reqid = deconstruct_packet(DECODING,packet)
-                if (dummy_bytes == "" or reqid == ""):
+                if (len(packet) != 1024):
                     print sock.getpeername(), "Unreachable"
                     remove_client(sock)
                 else:
+                    dummy_bytes, reqid = deconstruct_packet(DECODING,packet)
                     svcid = map_sock_to_service(sock)
                     add_request((sock,reqid),svcid)
                     print 'Received data: %s' % dummy_bytes
@@ -225,11 +225,15 @@ def receive_from_clients_thread():
 # Return a reqid from reqid_to_sock_buffer
 def getRequest (svcid,buf,length):
 
-    sock , reqid = get_sock_from_requests(svcid)
+    tmp_tuple = get_sock_from_requests(svcid)
+    
 
     # failed to get a request!
-    if (sock == None):
+    if (tmp_tuple == None):
         return -1
+
+    sock = tmp_tuple[0]
+    reqid = tmp_tuple[1]
 
     # Map reqid to sock for reply !
     if (not map_reqid_to_sock(reqid,sock)):
