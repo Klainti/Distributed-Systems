@@ -6,6 +6,9 @@ from packet_struct import *
 from multicast_module import *
 from sys import exit
 
+DECODING = '!1016sq'
+
+
 # includes all tcp connections with clients
 # a dict to map sockets to services
 connection_buffer = {}
@@ -191,14 +194,15 @@ def receive_from_clients_thread():
             readable,_,_  = select.select(clients, [], [],TIMEOUT)
 
             for sock in readable:
-                data, addr = sock.recvfrom(1024)
-                if (data == ""):
+                packet, addr = sock.recvfrom(1024)
+                dummy_bytes, reqid = deconstruct_packet(DECODING,packet)
+                if (dummy_bytes == "" or reqid == ""):
                     print sock.getpeername(), "Unreachable"
                     remove_client(sock)
                 else:
                     svcid = map_sock_to_service(sock)
-                    add_request(sock,svcid)
-                    print 'Received data: %s' % data
+                    add_request((sock,reqid),svcid)
+                    print 'Received data: %s' % dummy_bytes
 
 
 
