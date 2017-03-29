@@ -40,6 +40,8 @@ TIMEOUT = 0.2
 
 service_buffer = []
 
+service_buffer_lock = thread.allocate_lock()
+
 
 #On success register(append to buffer) return 1, otherwise 0
 def register(svcid):
@@ -54,11 +56,43 @@ def register(svcid):
 #On success unregister(delete from buffer) return 1, otherwise 0
 def unregister(svcid):
 
+    service_buffer_lock.acquire()
+
     if (svcid in service_buffer):
         service_buffer.remove(svcid)
+        unsupport_service(svcid)
+        service_buffer_lock.release()
         return 1
 
+    service_buffer_lock.release()
     return 0
+
+def unsupport_service(svcid):
+    
+    connection_buffer_lock.acquire()
+    print 'Befoce deletion of {} service: {} and {}'.format(svcid,connection_buffer,connection_list)
+    print 'Before unregister, request buffer: {}'.format(request_buffer)
+
+    # Remove sockets from connnection list!
+    for item in connection_buffer[svcid]:
+        item.close()
+        connection_list.remove(item)
+
+    # Remove service and sockets from connection buffer
+    del connection_buffer[svcid]
+
+    # Remove requests for svcid
+
+    request_buffer_lock.acquire()
+    if (svcid in request_buffer.keys()):
+        del request_buffer[svcid]
+
+    print 'After deletion of {} service, request buffer: {}'.format(svcid,request_buffer)
+    request_buffer_lock.release()
+    
+
+    print 'After deletion of {} service: {} and {}'.format(svcid,connection_buffer,connection_list)
+    connection_buffer_lock.release()
 
 # Add a client to connection buffer
 def add_client(sock,svcid):
@@ -122,6 +156,14 @@ def map_reqid_to_sock(reqid,sock):
 
 # Add a request to the request buffer!
 def add_request(sock, svcid):
+
+    #check scvid supported from server
+    service_buffer_lock.acquire()
+    if (svcid not in service_buffer):
+        print 'Unsupported service for {} request'.format(sock) 
+        service_buffer_lock.release()
+        return None
+    service_buffer_lock.release()
 
     request_buffer_lock.acquire()
 
@@ -210,8 +252,12 @@ def search_for_clients():
         # wait for a client
         client_ip, client_port, client_demand_svc = receive_from_multicast(udp_socket)
 
+        service_buffer_lock.acquire()
+        tmp_service_buffer = service_buffer
+        service_buffer_lock.release()
+
         #check the service which client looking for 
-        if (client_demand_svc in service_buffer):
+        if (client_demand_svc in tmp_service_buffer):
             tcp_socket = establish_connection(client_ip,client_port)
         else:
             tcp_socket= None
@@ -241,8 +287,12 @@ def receive_from_clients_thread():
                 else:
                     dummy_bytes, reqid = deconstruct_packet(DECODING,packet)
                     svcid = map_sock_to_service(sock)
-                    add_request((sock,reqid),svcid)
-                    print 'Received data: %s' % dummy_bytes
+                    
+                    if (svcid != None):
+                        add_request((sock,reqid),svcid)
+                        print 'Received data: %s' % dummy_bytes
+                    else:
+                        'Unsupported service'
 
 def send_to_clients_thread():
 
