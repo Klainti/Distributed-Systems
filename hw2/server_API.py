@@ -155,7 +155,7 @@ def map_reqid_to_sock(reqid,sock):
     return 0
 
 # Add a request to the request buffer!
-def add_request(sock, svcid):
+def add_request(svcid,sock,data,reqid):
 
     #check scvid supported from server
     service_buffer_lock.acquire()
@@ -168,9 +168,9 @@ def add_request(sock, svcid):
     request_buffer_lock.acquire()
 
     if (svcid not in request_buffer.keys()):
-        request_buffer[svcid] = [sock]
+        request_buffer[svcid] = [(sock,data,reqid)]
     else:
-        request_buffer[svcid].append(sock)
+        request_buffer[svcid].append([(sock,data,reqid)])
 
     print 'Add a request: %s' %request_buffer
     request_buffer_lock.release()
@@ -285,12 +285,12 @@ def receive_from_clients_thread():
                     print sock.getpeername(), "Unreachable"
                     remove_client(sock)
                 else:
-                    dummy_bytes, reqid = deconstruct_packet(DECODING,packet)
+                    data, reqid = deconstruct_packet(DECODING,packet)
                     svcid = map_sock_to_service(sock)
                     
                     if (svcid != None):
-                        add_request((sock,reqid),svcid)
-                        print 'Received data: %s' % dummy_bytes
+                        add_request(svcid,sock,data.rstrip('\0'),reqid)
+                        print 'Received data: %s' % data.rstrip('\0')
                     else:
                         'Unsupported service'
 
@@ -328,7 +328,8 @@ def getRequest (svcid,buf,length):
         return -1
 
     sock = tmp_tuple[0]
-    reqid = tmp_tuple[1]
+    buf = tmp_tuple[1]
+    reqid = tmp_tuple[2]
 
     # Map reqid to sock for reply !
     if (not map_reqid_to_sock(reqid,sock)):
