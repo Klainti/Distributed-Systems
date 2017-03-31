@@ -3,37 +3,196 @@ import struct
 import sys
 import thread
 import time
+import select
 from packet_struct import *
 
 
-MULTI_IP = '224.3.29.71'
-MULTI_PORT = 10000
+MULTI_IP = ''
+MULTI_PORT = 0
+MY_IP = ''
 
-
+last_check = 0
 
 
 TIMEOUT = 0.2
 
-server_list = {}
-server_list_lock = thread.allocate_lock()
+svcid_sock = {}
+svcid_sock_lock = thread.allocate_lock()
+
+sock_svcid = {}
+sock_svcid_lock = thread.allocate_lock()
 
 new_requests = {}
 new_requests_lock = thread.allocate_lock()
 
+replies = {}
+replies_lock = thread.allocate_lock()
+
+sock_requests = {}
+sock_requests_lock = thread.allocate_lock()
+
+sock_time = {}
+sock_time_lock = thread.allocate_lock()
+
+total_sockets = []
+total_sockets_lock = thread.allocate_lock()
+
+reqid_svcid = {}
+reqid_svcid_lock = thread.allocate_lock()
+
+
+#########################
+mtx = thread.allocate_lock()
+#########################
+
 next_reqid = 0
 
+
+def find_connected_servers (svcid):
+
+
+    svcid_sock_lock.acquire()
+
+    if (svcid in svcid_sock.keys()):
+        tmp_list = svcid_sock[svcid]
+    else:
+        tmp_list = []
+
+    svcid_sock_lock.release()
+
+    return tmp_list
+
+def sock_requests_add (sock, reqid):
+
+    sock_requests_lock.acquire()
+    if (sock_requests.has_key(sock)):
+        sock_requests[sock].append(reqid)
+    else:
+        sock_requests[sock] = [reqid]
+    sock_requests_lock.release()
+
+def check_for_unactive_sockets():
+
+    print "*****\nCheck for unactive servers"
+
+    mtx.acquire()
+
+    sock_time_lock.acquire()
+
+    for s in sock_time.keys():
+
+        if (time.clock() - sock_time[s] > 20*TIMEOUT):
+
+            print "Socket:", s, "offline"
+
+            sock_requests_lock.acquire()
+
+            for r in sock_requests[s]:
+
+                reqid_svcid_lock.acquire()
+                svcid = reqid_svcid[r]
+                reqid_svcid_lock.release()
+
+                new_requests_lock.acquire()
+
+                pos = 0
+                while (pos < len(new_requests[svcid])):
+                    if (new_requests[svcid][pos][1] == r):
+                        new_requests[svcid][pos][2] = False
+                        break
+                    pos += 1
+
+                new_requests_lock.release()
+
+            del sock_requests[s]
+
+            sock_requests_lock.release()
+
+
+            del sock_time[s]
+
+            total_sockets_lock.acquire()
+            total_sockets.remove(s)
+            total_sockets_lock.release()
+
+            sock_svcid_lock.acquire()
+            svcid = sock_svcid[s]
+            del sock_svcid[s]
+            sock_svcid_lock.release()
+
+            svcid_sock_lock.acquire()
+            svcid_sock[svcid].remove(s)
+            svcid_sock_lock.release()
+
+            s.close()
+
+    print "Check for unactive servers done\n*****"
+
+    sock_time_lock.release()
+
+    mtx.release()
+
+def receive_data():
+
+    global last_check
+
+    while (1):
+
+        if (time.clock() - last_check > 1):
+            check_for_unactive_sockets()
+            last_check = time.clock()
+
+        ready,_,_ = select.select (total_sockets, [], [], TIMEOUT)
+
+        for sock in ready:
+
+            packet = sock.recv (1024)
+
+            data, reqid = deconstruct_packet (REQ_ENCODING, packet)
+
+            reqid_svcid_lock.acquire()
+            svcid = reqid_svcid[reqid]
+            reqid_svcid_lock.release()
+
+            new_requests_lock.acquire()
+
+            pos = 0
+            while (pos < len(new_requests[svcid])):
+                if (new_requests[svcid][pos][1] == reqid):
+                    del new_requests[svcid][pos]
+                    break
+                pos += 1
+
+            new_requests_lock.release()
+
+            print "Received packet with reqid:", reqid
+
+            replies_lock.acquire()
+            replies[reqid] = data
+            replies_lock.release()
+
+
+            sock_requests_lock.acquire()
+            sock_time_lock.acquire()
+            
+            if (len(sock_requests[sock]) == 0):
+                del sock_time[sock]
+            else:
+                sock_time[sock] = time.clock()
+
+            sock_time_lock.release()
+            sock_requests_lock.release()
 
 def send_data():
 
     while(1):
 
+        mtx.acquire()
 
         #Ready to send the new requests
         new_requests_lock.acquire()
         tmp_requests = new_requests
         new_requests_lock.release()
-
-
 
         if (len(tmp_requests) > 0):
 
@@ -42,66 +201,104 @@ def send_data():
             #For each family of service id in the requests find the servers family (tmp_list)
             for svcid in tmp_requests.keys():
 
-                server_list_lock.acquire()
-                if (svcid in server_list.keys()):
-                    tmp_list = server_list[svcid]
-                else:
-                    tmp_list = []
-                server_list_lock.release()
+                tmp_servers = find_connected_servers(svcid)
 
                 pos = 0
                 #For each request with this service id
                 #Round-Robin servers
-                if (len(tmp_list) > 0):
-                    for req in tmp_requests[svcid]:
-                        print "Sending packet with service id:", req[1]
-                        packet = construct_packet(REQ_ENCODING, req[0], req[1])
-                        tmp_list[pos].send(packet)
-                        pos = (pos+1)%len(tmp_list)
+                if (len(tmp_servers) > 0):
 
-                    new_requests_lock.acquire()
-                    del new_requests[svcid]
-                    new_requests_lock.release()
+                    for req in tmp_requests[svcid]:
+
+                        if (req[2] == False):
+
+                            req[2] = True
+
+                            print "Sending packet with service id:", req[1]
+                            packet = construct_packet(REQ_ENCODING, req[0], req[1])
+                            tmp_servers[pos].send(packet)
+
+                            sock_requests_add (tmp_servers[pos], req[1])
+
+                            sock_time_lock.acquire()
+                            if (not sock_time.has_key(tmp_servers[pos])):
+                                sock_time[tmp_servers[pos]] = time.clock()
+                            sock_time_lock.release()
+
+
+                            pos = (pos+1)%len(tmp_servers)
 
                 else:
-                    print "Cant send request with service id:", svcid
+                    print "No server for service:", svcid, "(send_multicast)"
 
-# Add a server to t server_list
+                    connected_servers = send_multicast(svcid)
+
+                    if (connected_servers == 0):
+                        print "No servers found for service:", svcid
+
+                        new_requests_lock.acquire()
+                        replies_lock.acquire()
+
+                        for req in new_requests[svcid]:
+                            replies[req[1]] = "ERROR"
+                        del new_requests[svcid]
+
+                        replies_lock.release()
+                        new_requests_lock.release()
+
+        mtx.release()
+
+
+# Add a server to t svcid_sock
 def add_server(svcid,socket):
 
-    server_list_lock.acquire()
+    svcid_sock_lock.acquire()
 
     # check service already has at least one server!
-    if (svcid in server_list.keys()):
-        server_list[svcid].append(socket)
+    if (svcid in svcid_sock.keys()):
+        svcid_sock[svcid].append(socket)
     else:
-        server_list[svcid] = [socket]
+        svcid_sock[svcid] = [socket]
 
-    print "Connected servers: ", server_list
+    print "Connected servers: ", svcid_sock
 
-    server_list_lock.release()
+    svcid_sock_lock.release()
 
-def set_discover_multicast(ipaddr,port,svcid):
+    sock_svcid_lock.acquire()
+    sock_svcid[socket] = svcid
+    sock_svcid_lock.release()
+
+    total_sockets_lock.acquire()
+    total_sockets.append (socket)
+    total_sockets_lock.release()
+
+def send_multicast(svcid):
 
     multicast_group = (MULTI_IP,MULTI_PORT)
+
+    tcp_port = 0
+
 
     #Create the datagram socket
     udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     #Create TCP socket
     tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    tcp_socket.bind((ipaddr,port))
-    port = tcp_socket.getsockname()[1]
+    tcp_socket.bind((MY_IP, tcp_port))
+    tcp_port = tcp_socket.getsockname()[1]
     tcp_socket.settimeout(TIMEOUT)
 
-    server_connection = False
-    while(not server_connection):
+    connected_servers = 0
 
-        try:
-            #Send data to the multicast group
-            print 'Sending IP: %s and port: %d' % (ipaddr,port)
-            packet = construct_broadcast_packet(BROADCAST_ENCODING,ipaddr,port,svcid)
-            sent = udp_sock.sendto(packet,multicast_group)
+    try:
+        #Send data to the multicast group
+        print 'Sending IP: %s and port: %d' % (MY_IP, tcp_port)
+        packet = construct_broadcast_packet(BROADCAST_ENCODING, MY_IP, tcp_port, svcid)
+        sent = udp_sock.sendto(packet, multicast_group)
+
+        end_of_connections = False
+
+        while(not end_of_connections):
 
             try:
                 tcp_socket.listen(1)
@@ -110,34 +307,86 @@ def set_discover_multicast(ipaddr,port,svcid):
 
                 add_server(svcid,conn)
 
+                connected_servers += 1
+
                 print 'Connected at: %s' % str(addr)
-                server_connection = True
             except socket.timeout:
-                print 'Time out, no connection occur'
-        finally:
-            pass
+                end_of_connections = True
+                print 'Time out, no more connections'
+    finally:
+        pass
+
+    return connected_servers
+
+    tcp_socket.close()
 
 def sendRequest (svcid, data):
 
     global next_reqid
 
+
+    reqid_svcid_lock.acquire()
+    reqid_svcid[next_reqid] = svcid
+    reqid_svcid_lock.release()
+
     new_requests_lock.acquire()
 
     if (new_requests.has_key(svcid)):
-        new_requests[svcid].append ([data, next_reqid])
+        new_requests[svcid].append ([data, next_reqid, False])
     else:
-        new_requests[svcid] = [[data, next_reqid]]
+        new_requests[svcid] = [[data, next_reqid, False]]
 
-    print "Add request with reqid:", next_reqid
-    print "Requests buffer:", new_requests
+    print "*****\nAdd request with reqid:", next_reqid, "\n*****"
 
     next_reqid += 1
 
     new_requests_lock.release()
 
+    return next_reqid-1
 
 
-def setDiscoveryMulticast (ip, port, svcid):
+def print_buffers():
 
-    set_discover_multicast(ip, port, svcid)
+
+    sock_svcid_lock.acquire()
+    print "******\nSock_svcid:", sock_svcid
+    sock_svcid_lock.release()
+
+    svcid_sock_lock.acquire()
+    print "******\nSvcid_sock:", svcid_sock
+    svcid_sock_lock.release()
+
+    new_requests_lock.acquire()
+    print "******\nNew_requests:", new_requests
+    new_requests_lock.release()
+
+    replies_lock.acquire()
+    print "******\nReplies:", replies
+    replies_lock.release()
+
+    sock_requests_lock.acquire()
+    print "******\nSock_requests:", sock_requests
+    sock_requests_lock.release()
+
+    sock_time_lock.acquire()
+    print "******\nSock_time:", sock_time
+    sock_time_lock.release()
+
+    total_sockets_lock.acquire()
+    print "******\nTotal_sockets:", total_sockets
+    total_sockets_lock.release()
+
+
+
+def setDiscoveryMulticast (my_ip, multi_ip, port):
+
+    global MULTI_IP
+    global MULTI_PORT
+    global MY_IP
+
+    MULTI_IP = multi_ip
+    MULTI_PORT = port
+    MY_IP = my_ip
+
     thread.start_new_thread(send_data,())
+    thread.start_new_thread(receive_data,())
