@@ -24,7 +24,8 @@ request_buffer = {}
 
 request_buffer_lock = thread.allocate_lock()
 
-
+sock_max_reqid = {}
+sock_max_reqid_lock = thread.allocate_lock()
 ##################/Sender/#####################
 
 reply_buffer = {}
@@ -114,6 +115,15 @@ def add_client(sock,svcid):
     print 'Add a client: %s' % connection_buffer
     connection_buffer_lock.release()
 
+
+# initialize max_reqid for a new connection
+def init_max_reqid(sock):
+
+    sock_max_reqid_lock.acquire()
+    sock_max_reqid[sock] = 0
+    print 'Maxreq id for each sock: %s' % sock_max_reqid
+    sock_max_reqid_lock.release()
+
 def remove_client(sock):
     
     connection_buffer_lock.acquire()
@@ -173,7 +183,7 @@ def add_request(svcid,sock,data,reqid):
     if (svcid not in request_buffer.keys()):
         request_buffer[svcid] = [(sock,data,reqid)]
     else:
-        request_buffer[svcid].append([(sock,data,reqid)])
+        request_buffer[svcid].append((sock,data,reqid))
 
     print 'Add a request: %s' %request_buffer
     request_buffer_lock.release()
@@ -268,6 +278,7 @@ def search_for_clients():
         # Add the connection to buffer!
         if (tcp_socket is not None):
             add_client(tcp_socket,client_demand_svc)
+            init_max_reqid(tcp_socket)
 
 def receive_from_clients_thread():
 
@@ -281,6 +292,7 @@ def receive_from_clients_thread():
         # receive over multiple sockets!
         if (len(clients)):
             readable,_,_  = select.select(clients, [], [],TIMEOUT)
+            print 'Has readable'
 
             for sock in readable:
                 packet, addr = sock.recvfrom(1024)
@@ -289,13 +301,28 @@ def receive_from_clients_thread():
                     remove_client(sock)
                 else:
                     data, reqid = deconstruct_packet(DECODING,packet)
-                    svcid = map_sock_to_service(sock)
-                    
-                    if (svcid != None):
-                        add_request(svcid,sock,data.rstrip('\0'),reqid)
-                        print 'Received data: %s' % data.rstrip('\0')
+    
+                    #check for duplicate request for this sock
+                    new_request = True
+                    sock_max_reqid_lock.acquire()
+                    if (sock_max_reqid[sock]>= reqid):
+                        print 'Request {} has served in the past'.format(reqid)
+                        new_request = False
                     else:
-                        'Unsupported service'
+                        # update max_reqid for this sock
+                        sock_max_reqid[sock] += 1
+                        print 'Maxreqid for each sock: %s' % sock_max_reqid
+                    sock_max_reqid_lock.release()
+                        
+                    if (new_request):
+                
+                        svcid = map_sock_to_service(sock)
+                    
+                        if (svcid != None):
+                            add_request(svcid,sock,data.rstrip('\0'),reqid)
+                            print 'Received data: %s' % data.rstrip('\0')
+                        else:
+                            'Unsupported service'
 
 def send_to_clients_thread():
 
@@ -331,7 +358,6 @@ def reqid_generator():
 def getRequest (svcid,buf,length):
 
     tmp_tuple = get_sock_from_requests(svcid)
-
 
     # failed to get a request!
     if (tmp_tuple == None):
