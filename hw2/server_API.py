@@ -33,6 +33,9 @@ reply_buffer_lock = thread.allocate_lock()
 reqid_to_sock_buffer = {}
 reqid_to_sock_lock = thread.allocate_lock()
 
+
+my_reqid = 0
+
 #timeout for select.select
 TIMEOUT = 0.2
 
@@ -142,12 +145,12 @@ def map_sock_to_service(sock):
     connection_buffer_lock.release()
     return None
 
-def map_reqid_to_sock(reqid,sock):
+def map_reqid_to_sock(server_reqid,sock,client_reqid):
 
     reqid_to_sock_lock.acquire()
 
-    if (reqid not in reqid_to_sock_buffer.keys()):
-        reqid_to_sock_buffer[reqid] = sock
+    if (server_reqid not in reqid_to_sock_buffer.keys()):
+        reqid_to_sock_buffer[server_reqid] = (sock,client_reqid)
         reqid_to_sock_lock.release()
         return 1
 
@@ -197,15 +200,15 @@ def get_sock_from_requests(svcid):
     request_buffer_lock.release()
     return None
 
-def add_reply(reqid,sock):
+def add_reply(server_reqid,sock,data,client_reqid):
     
     reply_buffer_lock.acquire()
 
-    if (reqid in reply_buffer.keys()):
+    if (server_reqid in reply_buffer.keys()):
         reply_buffer_lock.release()
         return 0
 
-    reply_buffer[reqid] = sock
+    reply_buffer[server_reqid] = (sock,data,client_reqid)
     print 'Add a reply: %s' % reply_buffer
     reply_buffer_lock.release()
     return 1
@@ -304,9 +307,9 @@ def send_to_clients_thread():
 
         # Send replies!!
         for key in tmp_reply_buffer.keys():
-            sock = tmp_reply_buffer[key]
+            sock,data,client_reqid = tmp_reply_buffer[key]
 
-            packet = construct_packet(DECODING,'Hello',key,None)
+            packet = construct_packet(DECODING,data,client_reqid)
 
             if (len(packet) ==sock.send(packet)):
                 #update reply buffer!
@@ -315,6 +318,13 @@ def send_to_clients_thread():
                 del reply_buffer[key]
                 print 'Send a reply: %s' % reply_buffer
                 reply_buffer_lock.release()
+
+def reqid_generator():
+
+    global my_reqid
+    my_reqid += 1
+    
+    return my_reqid 
 
 
 # Return a reqid from reqid_to_sock_buffer
@@ -329,34 +339,35 @@ def getRequest (svcid,buf,length):
 
     sock = tmp_tuple[0]
     buf = tmp_tuple[1]
-    reqid = tmp_tuple[2]
+    client_reqid = tmp_tuple[2]
+    server_reqid = reqid_generator()
 
     # Map reqid to sock for reply !
-    if (not map_reqid_to_sock(reqid,sock)):
+    if (not map_reqid_to_sock(server_reqid,sock,client_reqid)):
         return -1
 
-    return reqid
+    return server_reqid
 
 # Send a reply to a client
-def sendReply(reqid,buf,length):
+def sendReply(server_reqid,buf,length):
     
     reqid_to_sock_lock.acquire()
 
     # check reqid has sock 
-    if (reqid not in reqid_to_sock_buffer.keys()):
+    if (server_reqid not in reqid_to_sock_buffer.keys()):
         reqid_to_sock_lock.release()
         return -1
 
-    sock = reqid_to_sock_buffer[reqid]
+    sock, client_reqid = reqid_to_sock_buffer[server_reqid]
 
     #update buffer
     print 'Map reqid to sock: {}'.format(sock)
-    del reqid_to_sock_buffer[reqid]
+    del reqid_to_sock_buffer[server_reqid]
     print 'Update reqid_to_sock_buffer: %s' % reqid_to_sock_buffer
 
     reqid_to_sock_lock.release()
 
-    if (add_reply(reqid,sock)):
+    if (add_reply(server_reqid,sock,buf,client_reqid)):
         return -1
 
     return 1
