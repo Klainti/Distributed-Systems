@@ -49,13 +49,13 @@ service_buffer_lock = thread.allocate_lock()
 
 #On success register(append to buffer) return 1, otherwise 0
 def register(svcid):
-    
+
     if (svcid not in service_buffer):
         service_buffer.append(svcid)
         print 'Register: %s' % service_buffer
         return 1
-    
-    return 0 
+
+    return 0
 
 #On success unregister(delete from buffer) return 1, otherwise 0
 def unregister(svcid):
@@ -72,7 +72,7 @@ def unregister(svcid):
     return 0
 
 def unsupport_service(svcid):
-    
+
     connection_buffer_lock.acquire()
     print 'Befoce deletion of {} service: {} and {}'.format(svcid,connection_buffer,connection_list)
     print 'Before unregister, request buffer: {}'.format(request_buffer)
@@ -93,7 +93,7 @@ def unsupport_service(svcid):
 
     print 'After deletion of {} service, request buffer: {}'.format(svcid,request_buffer)
     request_buffer_lock.release()
-    
+
 
     print 'After deletion of {} service: {} and {}'.format(svcid,connection_buffer,connection_list)
     connection_buffer_lock.release()
@@ -105,7 +105,7 @@ def add_client(sock,svcid):
 
     # update connection_list
     connection_list.append(sock)
-    
+
     # update connection_buffer
     if (svcid not in connection_buffer.keys()):
         connection_buffer[svcid] = [sock]
@@ -125,7 +125,7 @@ def init_max_reqid(sock):
     sock_max_reqid_lock.release()
 
 def remove_client(sock):
-    
+
     connection_buffer_lock.acquire()
 
     sock.close()
@@ -173,7 +173,7 @@ def add_request(svcid,sock,data,reqid):
     #check scvid supported from server
     service_buffer_lock.acquire()
     if (svcid not in service_buffer):
-        print 'Unsupported service for {} request'.format(sock) 
+        print 'Unsupported service for {} request'.format(sock)
         service_buffer_lock.release()
         return None
     service_buffer_lock.release()
@@ -203,7 +203,7 @@ def get_sock_from_requests(svcid):
             #update request buffer
             del request_buffer[svcid]
             print 'Update request_buffer: %s' % request_buffer
-            
+
             request_buffer_lock.release()
             return request
 
@@ -269,7 +269,7 @@ def search_for_clients():
         tmp_service_buffer = service_buffer
         service_buffer_lock.release()
 
-        #check the service which client looking for 
+        #check the service which client looking for
         if (client_demand_svc in tmp_service_buffer):
             tcp_socket = establish_connection(client_ip,client_port)
         else:
@@ -337,7 +337,6 @@ def send_to_clients_thread():
             sock,data,client_reqid = tmp_reply_buffer[key]
 
             packet = construct_packet(DECODING,data,client_reqid)
-
             if (len(packet) ==sock.send(packet)):
                 #update reply buffer!
                 reply_buffer_lock.acquire()
