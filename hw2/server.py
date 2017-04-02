@@ -7,13 +7,12 @@ init()
 ans = int(raw_input("Send reply?[0/1]: "))
 
 reqid = -1
+buf = ''
 while(1):
-    reqid = getRequest(1,None,None)
+    reqid, buf = getRequest(1,buf,1024)
     if (reqid != -1 and ans):
-        print "GOT REQUEST", reqid
+        print "GOT REQUEST:{} with data: {}".format(reqid,buf)
         sendReply (reqid, "", 0)
-
-print reqid
 
 while(1):
     pass

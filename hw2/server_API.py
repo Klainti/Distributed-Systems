@@ -361,7 +361,7 @@ def getRequest (svcid,buf,length):
 
     # failed to get a request!
     if (tmp_tuple == None):
-        return -1
+        return (-1,None)
 
     sock = tmp_tuple[0]
     buf = tmp_tuple[1]
@@ -370,9 +370,9 @@ def getRequest (svcid,buf,length):
 
     # Map reqid to sock for reply !
     if (not map_reqid_to_sock(server_reqid,sock,client_reqid)):
-        return -1
+        return (-1,None)
 
-    return server_reqid
+    return (server_reqid,buf)
 
 # Send a reply to a client
 def sendReply(server_reqid,buf,length):
