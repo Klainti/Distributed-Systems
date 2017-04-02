@@ -188,6 +188,25 @@ def add_request(svcid,sock,data,reqid):
     print 'Add a request: %s' %request_buffer
     request_buffer_lock.release()
 
+# Remove previous requests for a client
+def clean_up_requests(sock):
+
+    request_buffer_lock.acquire()
+    print "Before clean up: {}".format(request_buffer)
+
+    for key in request_buffer.keys():
+        i=0
+        length = len(request_buffer[key])
+        while(i<length):
+            if (sock == request_buffer[key][i][0]):
+                del request_buffer[key][i]
+                length = len(request_buffer[key])
+            else:
+                i += 1
+    
+    print "Clean up requests: {}".format(request_buffer)
+    request_buffer_lock.release()
+
 def get_sock_from_requests(svcid):
 
     request_buffer_lock.acquire()
@@ -201,8 +220,8 @@ def get_sock_from_requests(svcid):
 
             #print 'Get a request: {}'.format(request)
             #update request buffer
-            del request_buffer[svcid]
-            #print 'Update request_buffer: %s' % request_buffer
+            del request_buffer[svcid][0]
+            print 'Update request_buffer: %s' % request_buffer
 
             request_buffer_lock.release()
             return request
@@ -223,6 +242,20 @@ def add_reply(server_reqid,sock,data,client_reqid):
     reply_buffer_lock.release()
     return 1
 
+def clean_up_replies(server_reqid,sock):
+
+    reply_buffer_lock.acquire()
+    print "Before clean up replies: {}".format(reply_buffer)
+
+    if (sock != None):
+        for key in reply_buffer.keys():
+            if (sock == reply_buffer[key][0]):
+                del reply_buffer[key]
+    elif (server_reqid != None):
+        del reply_buffer[server_reqid]
+
+    print "After clean up replies: {}".format(reply_buffer)
+    reply_buffer_lock.release()
 
 def establish_connection(client_ip,client_port):
 
@@ -298,6 +331,8 @@ def receive_from_clients_thread():
                 if (len(packet) != 1024):
                     print sock.getpeername(), "Unreachable"
                     remove_client(sock)
+                    clean_up_requests(sock)
+                    clean_up_replies(None,sock)
                 else:
                     data, reqid = deconstruct_packet(DECODING,packet)
                     print ("Reqid: {} at time: {}").format(reqid,time.time())
@@ -338,13 +373,12 @@ def send_to_clients_thread():
             print "Send reqid:{} , time: {}".format(client_reqid,time.time())
 
             packet = construct_packet(DECODING,data,client_reqid)
-            if (len(packet) == sock.send(packet)):
+            if (len(packet) != sock.send(packet)):
                 #update reply buffer!
-                reply_buffer_lock.acquire()
-                #print 'Reply buffer: %s' % reply_buffer
-                del reply_buffer[key]
-                #print 'Send a reply: %s' % reply_buffer
-                reply_buffer_lock.release()
+                clean_up_replies(sock)
+                clean_up_requests(sock)
+            else:
+                clean_up_replies(key,None)
 
 def reqid_generator():
 
