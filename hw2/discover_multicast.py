@@ -217,6 +217,7 @@ def send_data():
                             print "Sending packet with service id:", req[1]
                             packet = construct_packet(REQ_ENCODING, req[0], req[1])
                             tmp_servers[pos].send(packet)
+                            print "Time: {}".format(time.time()) 
 
                             sock_requests_add (tmp_servers[pos], req[1])
 
