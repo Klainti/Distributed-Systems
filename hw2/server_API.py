@@ -6,9 +6,6 @@ from packet_struct import *
 from multicast_module import *
 from sys import exit
 
-DECODING = '!1016sq'
-
-
 # includes all tcp connections with clients
 # a dict to map sockets to services
 connection_buffer = {}
@@ -52,7 +49,6 @@ def register(svcid):
 
     if (svcid not in service_buffer):
         service_buffer.append(svcid)
-        #print 'Register: %s' % service_buffer
         return 1
 
     return 0
@@ -74,8 +70,6 @@ def unregister(svcid):
 def unsupport_service(svcid):
 
     connection_buffer_lock.acquire()
-    #print 'Befoce deletion of {} service: {} and {}'.format(svcid,connection_buffer,connection_list)
-    #print 'Before unregister, request buffer: {}'.format(request_buffer)
 
     # Remove sockets from connnection list!
     for item in connection_buffer[svcid]:
@@ -91,11 +85,8 @@ def unsupport_service(svcid):
     if (svcid in request_buffer.keys()):
         del request_buffer[svcid]
 
-    #print 'After deletion of {} service, request buffer: {}'.format(svcid,request_buffer)
     request_buffer_lock.release()
 
-
-    #print 'After deletion of {} service: {} and {}'.format(svcid,connection_buffer,connection_list)
     connection_buffer_lock.release()
 
 # Add a client to connection buffer
@@ -112,7 +103,6 @@ def add_client(sock,svcid):
     else:
         connection_buffer[svcid].append(sock)
 
-    #print 'Add a client: %s' % connection_buffer
     connection_buffer_lock.release()
 
 
@@ -121,7 +111,6 @@ def init_max_reqid(sock):
 
     sock_max_reqid_lock.acquire()
     sock_max_reqid[sock] = 0
-    #print 'Maxreq id for each sock: %s' % sock_max_reqid
     sock_max_reqid_lock.release()
 
 def remove_client(sock):
@@ -138,7 +127,6 @@ def remove_client(sock):
             connection_buffer[key].remove(sock)
             break
 
-    #print 'Remove a client: %s' % connection_buffer
     connection_buffer_lock.release()
 
 # search in which service a sock belong!
@@ -173,7 +161,6 @@ def add_request(svcid,sock,data,reqid):
     #check scvid supported from server
     service_buffer_lock.acquire()
     if (svcid not in service_buffer):
-        print 'Unsupported service for {} request'.format(sock)
         service_buffer_lock.release()
         return None
     service_buffer_lock.release()
@@ -185,14 +172,12 @@ def add_request(svcid,sock,data,reqid):
     else:
         request_buffer[svcid].append((sock,data,reqid))
 
-    print 'Add a request: %s' %request_buffer
     request_buffer_lock.release()
 
 # Remove previous requests for a client
 def clean_up_requests(sock):
 
     request_buffer_lock.acquire()
-    print "Before clean up: {}".format(request_buffer)
 
     for key in request_buffer.keys():
         i=0
@@ -203,8 +188,7 @@ def clean_up_requests(sock):
                 length = len(request_buffer[key])
             else:
                 i += 1
-    
-    print "Clean up requests: {}".format(request_buffer)
+
     request_buffer_lock.release()
 
 def get_sock_from_requests(svcid):
@@ -218,10 +202,8 @@ def get_sock_from_requests(svcid):
         else:
             request = request_buffer[svcid][0]
 
-            #print 'Get a request: {}'.format(request)
             #update request buffer
             del request_buffer[svcid][0]
-            print 'Update request_buffer: %s' % request_buffer
 
             request_buffer_lock.release()
             return request
@@ -230,7 +212,7 @@ def get_sock_from_requests(svcid):
     return None
 
 def add_reply(server_reqid,sock,data,client_reqid):
-    
+
     reply_buffer_lock.acquire()
 
     if (server_reqid in reply_buffer.keys()):
@@ -238,14 +220,13 @@ def add_reply(server_reqid,sock,data,client_reqid):
         return 0
 
     reply_buffer[server_reqid] = (sock,data,client_reqid)
-    #print 'Add a reply: %s' % reply_buffer
+
     reply_buffer_lock.release()
     return 1
 
 def clean_up_replies(server_reqid,sock):
 
     reply_buffer_lock.acquire()
-    print "Before clean up replies: {}".format(reply_buffer)
 
     if (sock != None):
         for key in reply_buffer.keys():
@@ -254,7 +235,6 @@ def clean_up_replies(server_reqid,sock):
     elif (server_reqid != None):
         del reply_buffer[server_reqid]
 
-    print "After clean up replies: {}".format(reply_buffer)
     reply_buffer_lock.release()
 
 def establish_connection(client_ip,client_port):
@@ -264,26 +244,20 @@ def establish_connection(client_ip,client_port):
     tcp_socket.settimeout(TIMEOUT)
 
     try:
-        #print 'Try connecting to IP: %s, port: %d' %(client_ip,client_port)
         tcp_socket.connect((client_ip,client_port))
 
 
         #Check if connection establish!
         try:
             msg = tcp_socket.recv(5)
-            #print 'Server: %s connected to : %s' % (tcp_socket.getsockname(),tcp_socket.getpeername())
-            #print 'Connection complete'
             return tcp_socket
         except socket.error:
-            #print "Connection failed. Try again!"
             tcp_socket.close()
             return None
 
     except socket.timeout:
-        #print 'Timeout!! Try again to connect!'
         return establish_connection(client_ip,client_port)
     except socket.error:
-        #print "Connection failed. Try again!"
         tcp_socket.close()
         return None
 
@@ -334,28 +308,24 @@ def receive_from_clients_thread():
                     clean_up_requests(sock)
                     clean_up_replies(None,sock)
                 else:
-                    data, reqid = deconstruct_packet(DECODING,packet)
-                    print ("Reqid: {} at time: {}").format(reqid,time.time())
-                    
+                    data, reqid = deconstruct_packet(REQ_ENCODING,packet)
+
                     #check for duplicate request for this sock
                     new_request = True
                     sock_max_reqid_lock.acquire()
                     if (sock_max_reqid[sock]>= reqid):
-                        print 'Request {} has served in the past'.format(reqid)
                         new_request = False
                     else:
                         # update max_reqid for this sock
                         sock_max_reqid[sock] += 1
-                        #print 'Maxreqid for each sock: %s' % sock_max_reqid
                     sock_max_reqid_lock.release()
-                        
+
                     if (new_request):
-                
+
                         svcid = map_sock_to_service(sock)
-                    
+
                         if (svcid != None):
                             add_request(svcid,sock,data.rstrip('\0'),reqid)
-                            #print 'Received data: %s' % data.rstrip('\0')
                         else:
                             'Unsupported service'
 
@@ -370,9 +340,8 @@ def send_to_clients_thread():
         # Send replies!!
         for key in tmp_reply_buffer.keys():
             sock,data,client_reqid = tmp_reply_buffer[key]
-            print "Send reqid:{} , time: {}".format(client_reqid,time.time())
 
-            packet = construct_packet(DECODING,data,client_reqid)
+            packet = construct_packet(REQ_ENCODING,data,client_reqid)
             if (len(packet) != sock.send(packet)):
                 #update reply buffer!
                 clean_up_replies(sock)
@@ -384,8 +353,8 @@ def reqid_generator():
 
     global my_reqid
     my_reqid += 1
-    
-    return my_reqid 
+
+    return my_reqid
 
 
 # Return a reqid from reqid_to_sock_buffer
@@ -410,10 +379,10 @@ def getRequest (svcid,buf,length):
 
 # Send a reply to a client
 def sendReply(server_reqid,buf,length):
-    
+
     reqid_to_sock_lock.acquire()
 
-    # check reqid has sock 
+    # check reqid has sock
     if (server_reqid not in reqid_to_sock_buffer.keys()):
         reqid_to_sock_lock.release()
         return -1
@@ -421,9 +390,7 @@ def sendReply(server_reqid,buf,length):
     sock, client_reqid = reqid_to_sock_buffer[server_reqid]
 
     #update buffer
-    #print 'Map reqid to sock: {}'.format(sock)
     del reqid_to_sock_buffer[server_reqid]
-    #print 'Update reqid_to_sock_buffer: %s' % reqid_to_sock_buffer
 
     reqid_to_sock_lock.release()
 
