@@ -173,8 +173,13 @@ def receive_data():
 
 
             sock_requests_lock.acquire()
+
+            sock_requests[sock].remove(reqid)
+
+            print "Remaining socket requests:", sock_requests
+
             sock_time_lock.acquire()
-            
+
             if (len(sock_requests[sock]) == 0):
                 del sock_time[sock]
             else:
@@ -201,6 +206,9 @@ def send_data():
             #For each family of service id in the requests find the servers family (tmp_list)
             for svcid in tmp_requests.keys():
 
+                if (tmp_requests[svcid] == []):
+                    continue
+
                 tmp_servers = find_connected_servers(svcid)
 
                 pos = 0
@@ -217,7 +225,7 @@ def send_data():
                             print "Sending packet with service id:", req[1]
                             packet = construct_packet(REQ_ENCODING, req[0], req[1])
                             tmp_servers[pos].send(packet)
-                            print "Time: {}".format(time.time()) 
+                            print "Time: {}".format(time.time())
 
                             sock_requests_add (tmp_servers[pos], req[1])
 
