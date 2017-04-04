@@ -4,6 +4,7 @@ import sys
 import thread
 import time
 import select
+import os
 from packet_struct import *
 
 ########################## <CUSTOM ERRORS> ##########################
@@ -443,17 +444,30 @@ def getReply (reqid, timeout):
 
 
 
-def setDiscoveryMulticast (my_ip, multi_ip, port):
+def setDiscoveryMulticast (multi_ip, port):
 
     global MULTI_IP
     global MULTI_PORT
-    global MY_IP
 
     MULTI_IP = multi_ip
     MULTI_PORT = port
-    MY_IP = my_ip
+
+    init()
+
+def init():
+
+    global MY_IP
 
     thread.start_new_thread(send_data,())
     thread.start_new_thread(receive_data,())
+
+    s1 = os.popen('ifconfig wlan0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
+    s2 = os.popen('ifconfig eth0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
+    print s1+s2
+
+    if (len(s1)>16):
+        MY_IP = s2
+    else:
+        MY_IP = s1
 
 ########################## </API> ##########################

@@ -6,6 +6,9 @@ from packet_struct import *
 from multicast_module import *
 from sys import exit
 
+MULTI_IP = ""
+MULTI_PORT = 0
+
 # includes all tcp connections with clients
 # a dict to map sockets to services
 connection_buffer = {}
@@ -264,7 +267,7 @@ def establish_connection(client_ip,client_port):
 #Receive from multicast and tries to connect with a client
 def search_for_clients():
 
-    udp_socket = socket_for_multicast()
+    udp_socket = socket_for_multicast(MULTI_IP,MULTI_PORT)
 
     # Try to connect with a client
     while (1):
@@ -398,6 +401,16 @@ def sendReply(server_reqid,buf,length):
         return -1
 
     return 1
+
+def setDiscoveryMulticast (multi_ip, port):
+
+    global MULTI_IP
+    global MULTI_PORT
+
+    MULTI_IP = multi_ip
+    MULTI_PORT = port
+
+    init()
 
 
 # Spawn sender/receiver threads!
