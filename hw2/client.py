@@ -9,7 +9,9 @@ multicast_port = int(raw_input("Give multicast port: "))
 setDiscoveryMulticast(multicast_ip,multicast_port)
 
 for i in xrange (10):
-    sendRequest (i%2, "Request for " + str(i) )
+    reqid = sendRequest (i%2, "Request for " + str(i) )
+    s = getReply(reqid, 2)
+    print "Got reply for", reqid, ":", s
 
 while (1):
     pass

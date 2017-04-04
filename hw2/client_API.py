@@ -366,7 +366,10 @@ def send_data():
 
                             print "Sending packet with service id:", req[1]
                             packet = construct_packet(REQ_ENCODING, req[0], req[1])
-                            tmp_servers[pos].send(packet)
+                            try:
+                                tmp_servers[pos].send(packet)
+                            except socket.error:
+                                continue
                             print "Time: {}".format(time.time())
 
                             sock_requests_add (tmp_servers[pos], req[1])
@@ -441,6 +444,33 @@ def getReply (reqid, timeout):
             replies_lock.release()
             raise MissingReply ("Reply not received")
             return
+    elif (timeout < 0):
+        while (1):
+            replies_lock.acquire()
+            if (replies.has_key(reqid)):
+                r = replies[reqid]
+                del replies[reqid]
+                replies_lock.release()
+                taken_reqids.append (reqid)
+                return r
+            replies_lock.release()
+            time.sleep(0.09)
+    else:
+        found = False
+        stime = time.clock()
+        while (time.clock()-stime < timeout):
+            replies_lock.acquire()
+            if (replies.has_key(reqid)):
+                r = replies[reqid]
+                del replies[reqid]
+                replies_lock.release()
+                taken_reqids.append (reqid)
+                foun = True
+                return r
+            replies_lock.release()
+            time.sleep(0.09)
+        return "ERROR"
+
 
 
 
