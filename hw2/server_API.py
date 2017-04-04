@@ -24,8 +24,8 @@ request_buffer = {}
 
 request_buffer_lock = thread.allocate_lock()
 
-sock_max_reqid = {}
-sock_max_reqid_lock = thread.allocate_lock()
+sock_received_reqids = {}
+sock_received_reqids_lock = thread.allocate_lock()
 ##################/Sender/#####################
 
 reply_buffer = {}
@@ -34,6 +34,7 @@ reply_buffer_lock = thread.allocate_lock()
 reqid_to_sock_buffer = {}
 reqid_to_sock_lock = thread.allocate_lock()
 
+mtx = thread.allocate_lock()
 
 my_reqid = 0
 
@@ -112,9 +113,9 @@ def add_client(sock,svcid):
 # initialize max_reqid for a new connection
 def init_max_reqid(sock):
 
-    sock_max_reqid_lock.acquire()
-    sock_max_reqid[sock] = 0
-    sock_max_reqid_lock.release()
+    sock_received_reqids_lock.acquire()
+    sock_received_reqids[sock] = []
+    sock_received_reqids_lock.release()
 
 def remove_client(sock):
 
@@ -131,6 +132,12 @@ def remove_client(sock):
             break
 
     connection_buffer_lock.release()
+
+def clean_up_received_reqids(sock):
+
+    sock_received_reqids_lock.acquire()
+    del sock_received_reqids[sock]
+    sock_received_reqids_lock.release()
 
 # search in which service a sock belong!
 def map_sock_to_service(sock):
@@ -307,21 +314,24 @@ def receive_from_clients_thread():
                 packet, addr = sock.recvfrom(1024)
                 if (len(packet) != 1024):
                     print sock.getpeername(), "Unreachable"
+                    mtx.acquire()
                     remove_client(sock)
                     clean_up_requests(sock)
                     clean_up_replies(None,sock)
+                    clean_up_received_reqids(sock)
+                    mtx.release()
                 else:
                     data, reqid = deconstruct_packet(REQ_ENCODING,packet)
 
                     #check for duplicate request for this sock
                     new_request = True
-                    sock_max_reqid_lock.acquire()
-                    if (sock_max_reqid[sock]>= reqid):
+                    sock_received_reqids_lock.acquire()
+                    if (reqid in sock_received_reqids[sock]):
                         new_request = False
                     else:
                         # update max_reqid for this sock
-                        sock_max_reqid[sock] += 1
-                    sock_max_reqid_lock.release()
+                        sock_received_reqids[sock].append(reqid)
+                    sock_received_reqids_lock.release()
 
                     if (new_request):
 
@@ -336,21 +346,22 @@ def send_to_clients_thread():
 
     while (1):
 
+        mtx.acquire()
         reply_buffer_lock.acquire()
         tmp_reply_buffer = reply_buffer
         reply_buffer_lock.release()
 
         # Send replies!!
         for key in tmp_reply_buffer.keys():
-            sock,data,client_reqid = tmp_reply_buffer[key]
+            try:
+                sock,data,client_reqid = tmp_reply_buffer[key]
 
-            packet = construct_packet(REQ_ENCODING,data,client_reqid)
-            if (len(packet) != sock.send(packet)):
-                #update reply buffer!
-                clean_up_replies(sock)
-                clean_up_requests(sock)
-            else:
+                packet = construct_packet(REQ_ENCODING,data,client_reqid)
+                sock.send(packet)
                 clean_up_replies(key,None)
+            except socket.error:
+                pass
+        mtx.release()
 
 def reqid_generator():
 
@@ -364,10 +375,11 @@ def reqid_generator():
 def getRequest (svcid,buf,length):
 
     tmp_tuple = get_sock_from_requests(svcid)
+    while (tmp_tuple == None):
+        time.sleep (0.09)
+        tmp_tuple = get_sock_from_requests(svcid)
 
-    # failed to get a request!
-    if (tmp_tuple == None):
-        return (-1,None)
+
 
     sock = tmp_tuple[0]
     buf = tmp_tuple[1]
