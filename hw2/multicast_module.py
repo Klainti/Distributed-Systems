@@ -17,6 +17,7 @@ def socket_for_multicast(multi_ip,multi_port):
 
     # Create the UDP socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.settimeout(2)
 
     # Allow multiple copies of this program on one machine
     sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
@@ -32,7 +33,10 @@ def socket_for_multicast(multi_ip,multi_port):
 def receive_from_multicast(sock):
 
     #print ('waiting to receive client from multicast!')
-    packet, address = sock.recvfrom(1024)
+    try:
+        packet, address = sock.recvfrom(1024)
+    except socket.timeout:
+        return (None, None, None)
     ipaddr, port, svcid = deconstruct_packet(BROADCAST_ENCODING,packet)
 
     #remove null bytes!

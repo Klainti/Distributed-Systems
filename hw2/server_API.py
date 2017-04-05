@@ -6,6 +6,14 @@ from packet_struct import *
 from multicast_module import *
 from sys import exit
 
+
+thread_end = 0
+terminate_threads = False
+
+terminate_threads_lock = thread.allocate_lock()
+terminate_server = thread.allocate_lock()
+terminate_server.acquire()
+
 MULTI_IP = ""
 MULTI_PORT = 0
 
@@ -76,12 +84,13 @@ def unsupport_service(svcid):
     connection_buffer_lock.acquire()
 
     # Remove sockets from connnection list!
-    for item in connection_buffer[svcid]:
-        item.close()
-        connection_list.remove(item)
+    if (svcid in connection_buffer.keys()):
+        for item in connection_buffer[svcid]:
+            item.close()
+            connection_list.remove(item)
 
-    # Remove service and sockets from connection buffer
-    del connection_buffer[svcid]
+        # Remove service and sockets from connection buffer
+        del connection_buffer[svcid]
 
     # Remove requests for svcid
 
@@ -279,8 +288,15 @@ def search_for_clients():
     # Try to connect with a client
     while (1):
 
+        terminate_threads_lock.acquire()
+        if (terminate_threads is True):
+            break
+        terminate_threads_lock.release()
+
         # wait for a client
         client_ip, client_port, client_demand_svc = receive_from_multicast(udp_socket)
+        if (client_ip is None):
+            continue
 
         service_buffer_lock.acquire()
         tmp_service_buffer = service_buffer
@@ -297,9 +313,24 @@ def search_for_clients():
             add_client(tcp_socket,client_demand_svc)
             init_max_reqid(tcp_socket)
 
+    global thread_end
+    udp_socket.close()
+    thread_end += 1
+
+    if (thread_end == 3):
+        terminate_server.release()
+    terminate_threads_lock.release()
+
+
 def receive_from_clients_thread():
 
     while(1):
+
+        # check if server shutdown
+        terminate_threads_lock.acquire()
+        if (terminate_threads is True):
+            break
+        terminate_threads_lock.release()
 
         # take a copy of connections!
         connection_buffer_lock.acquire()
@@ -342,9 +373,25 @@ def receive_from_clients_thread():
                         else:
                             'Unsupported service'
 
+    global thread_end
+    thread_end += 1
+
+    if (thread_end == 3):
+        # notify close()
+        terminate_server.release()
+    terminate_threads_lock.release()
+
+
+
 def send_to_clients_thread():
 
     while (1):
+
+        # check if server shutdown
+        terminate_threads_lock.acquire()
+        if (terminate_threads is True):
+            break
+        terminate_threads_lock.release()
 
         mtx.acquire()
         reply_buffer_lock.acquire()
@@ -362,6 +409,14 @@ def send_to_clients_thread():
             except socket.error:
                 pass
         mtx.release()
+
+    global thread_end
+    thread_end += 1
+
+    if (thread_end == 3):
+        # notify close()
+        terminate_server.release()
+    terminate_threads_lock.release()
 
 def reqid_generator():
 
@@ -436,3 +491,14 @@ def init():
 
     #Spawn a thread to send replies to clients
     thread.start_new_thread(send_to_clients_thread,())
+
+def server_close():
+
+    global thread_end
+    global terminate_threads
+
+    terminate_threads_lock.acquire()
+    terminate_threads = True
+    terminate_threads_lock.release()
+
+    terminate_server.acquire()
