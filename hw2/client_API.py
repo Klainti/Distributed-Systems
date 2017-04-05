@@ -498,7 +498,6 @@ def init():
 
     s1 = os.popen('ifconfig wlan0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
     s2 = os.popen('ifconfig eth0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
-    print s1+s2
 
     if (len(s1)>16 or len(s1) < 7):
         MY_IP = s2
