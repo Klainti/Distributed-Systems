@@ -442,12 +442,12 @@ def sendRequest (svcid, data):
 
     return next_reqid-1
 
-def getReply (reqid, timeout):
+def getReply(reqid, timeout):
 
     global waiting_reqid
 
     if (reqid in taken_reqids):
-        raise TakenError ("Reply already taken")
+        raise TakenError("Reply already taken")
         return
 
     if (timeout == 0):
@@ -456,11 +456,11 @@ def getReply (reqid, timeout):
             r = replies[reqid]
             del replies[reqid]
             replies_lock.release()
-            taken_reqids.append (reqid)
+            taken_reqids.append(reqid)
             return r
         else:
             replies_lock.release()
-            raise MissingReply ("Reply not received")
+            raise MissingReply("Reply not received")
             return
     elif (timeout < 0):
         while (1):
@@ -469,7 +469,7 @@ def getReply (reqid, timeout):
                 r = replies[reqid]
                 del replies[reqid]
                 replies_lock.release()
-                taken_reqids.append (reqid)
+                taken_reqids.append(reqid)
                 return r
             waiting_reqid = reqid
             replies_lock.release()
@@ -511,7 +511,6 @@ def init():
 
     s1 = os.popen('/sbin/ifconfig wlan0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
     s2 = os.popen('/sbin/ifconfig eth0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
-
     if (len(s1)>16 or len(s1) < 7):
         MY_IP = s2
     else:

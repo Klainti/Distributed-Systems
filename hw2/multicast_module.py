@@ -31,7 +31,7 @@ def socket_for_multicast(multi_ip,multi_port):
 # Receive from multicast, return client address (IP,port) and service (svcid)
 def receive_from_multicast(sock):
 
-    print ('waiting to receive client from multicast!')
+    #print ('waiting to receive client from multicast!')
     packet, address = sock.recvfrom(1024)
     ipaddr, port, svcid = deconstruct_packet(BROADCAST_ENCODING,packet)
 
