@@ -6,9 +6,11 @@ send_time = []
 reply_time = []
 elapsed_time = []
 
+multicast_ip = "224.3.29.71"
+multicast_port = 10000
 # 224.3.29.71
-multicast_ip = raw_input("Give multicast IP:")
-multicast_port = int(raw_input("Give multicast port: "))
+#multicast_ip = raw_input("Give multicast IP:")
+#multicast_port = int(raw_input("Give multicast port: "))
 
 setDiscoveryMulticast(multicast_ip,multicast_port)
 

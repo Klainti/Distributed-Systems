@@ -307,7 +307,11 @@ def receive_data():
             #Remove request from dictionary sock_requests
             sock_requests_lock.acquire()
 
-            sock_requests[sock].remove(reqid)
+            try:
+                sock_requests[sock].remove(reqid)
+            except:
+                print reqid
+                pass
             #print "Remaining socket requests:", sock_requests
 
             sock_requests_lock.release()
@@ -400,6 +404,8 @@ def send_data():
 
                             req[2] = True
 
+                            sock_requests_add (tmp_servers[next_server], req[1])
+
                             #print "Sending packet with service id:", req[1]
                             packet = construct_packet(REQ_ENCODING, req[0], req[1])
                             try:
@@ -408,7 +414,7 @@ def send_data():
                                 continue
                             #print "Time: {}".format(time.time())
 
-                            sock_requests_add (tmp_servers[next_server], req[1])
+
 
                             next_server = (next_server+1)%len(tmp_servers)
 
