@@ -27,7 +27,7 @@ MULTI_IP = ''
 MULTI_PORT = 0
 MY_IP = ''
 
-TIMEOUT = 0.2
+TIMEOUT = 0.5
 ########################## </COSTANTS> ##########################
 
 
@@ -65,6 +65,10 @@ mtx = thread.allocate_lock()
 next_reqid = 0
 
 next_server = 0
+
+waiting_reqid = -1
+getReply_lock = thread.allocate_lock()
+getReply_lock.acquire()
 ########################## </VARIABLES> ##########################
 
 ########################## <THREADS' FUNCTIONS> ##########################
@@ -231,6 +235,7 @@ def send_multicast(svcid):
 ########################## <THREADS> ##########################
 def receive_data():
 
+    global waiting_reqid
     global next_server
 
     while (1):
@@ -240,7 +245,11 @@ def receive_data():
         #Receive replies for ready sockets
         for sock in ready:
 
-            packet = sock.recv (1024)
+            try:
+                packet = sock.recv (1024)
+            except socket.error:
+                disconnected.append (sock)
+                continue
 
             #If a socket sends empy packet means it went offline
             if (packet == ""):
@@ -272,6 +281,8 @@ def receive_data():
             #Add reply to dictionary replies
             replies_lock.acquire()
             replies[reqid] = data
+            if (waiting_reqid == reqid):
+                getReply_lock.release()
             replies_lock.release()
 
             #Remove request from dictionary sock_requests
@@ -288,7 +299,7 @@ def receive_data():
         for sock in disconnected:
 
 
-            #print "Socket:", sock, "offline"
+            print "Socket:", sock, "offline"
 
             sock_requests_lock.acquire()
 
@@ -433,6 +444,8 @@ def sendRequest (svcid, data):
 
 def getReply (reqid, timeout):
 
+    global waiting_reqid
+
     if (reqid in taken_reqids):
         raise TakenError ("Reply already taken")
         return
@@ -458,10 +471,11 @@ def getReply (reqid, timeout):
                 replies_lock.release()
                 taken_reqids.append (reqid)
                 return r
+            waiting_reqid = reqid
             replies_lock.release()
-            time.sleep(0.05)
+            getReply_lock.acquire()
+            waiting_reqid = -1
     else:
-        found = False
         stime = time.clock()
         while (time.clock()-stime < timeout):
             replies_lock.acquire()
@@ -470,10 +484,9 @@ def getReply (reqid, timeout):
                 del replies[reqid]
                 replies_lock.release()
                 taken_reqids.append (reqid)
-                foun = True
                 return r
             replies_lock.release()
-            time.sleep(0.05)
+            time.sleep(0.001)
         return "ERROR"
 
 
@@ -496,9 +509,8 @@ def init():
     thread.start_new_thread(send_data,())
     thread.start_new_thread(receive_data,())
 
-    s1 = os.popen('ifconfig wlan0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
-    s2 = os.popen('ifconfig eth0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
-    print s1+s2
+    s1 = os.popen('/sbin/ifconfig wlan0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
+    s2 = os.popen('/sbin/ifconfig eth0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
 
     if (len(s1)>16 or len(s1) < 7):
         MY_IP = s2

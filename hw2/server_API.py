@@ -376,7 +376,7 @@ def getRequest (svcid,buf,length):
 
     tmp_tuple = get_sock_from_requests(svcid)
     while (tmp_tuple == None):
-        time.sleep (0.09)
+        time.sleep (0.001)
         tmp_tuple = get_sock_from_requests(svcid)
 
 
