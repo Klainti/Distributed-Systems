@@ -240,7 +240,11 @@ def receive_data():
         #Receive replies for ready sockets
         for sock in ready:
 
-            packet = sock.recv (1024)
+            try:
+                packet = sock.recv (1024)
+            except socket.error:
+                disconnected.append (sock)
+                continue
 
             #If a socket sends empy packet means it went offline
             if (packet == ""):
@@ -288,7 +292,7 @@ def receive_data():
         for sock in disconnected:
 
 
-            #print "Socket:", sock, "offline"
+            print "Socket:", sock, "offline"
 
             sock_requests_lock.acquire()
 
