@@ -69,6 +69,15 @@ next_server = 0
 waiting_reqid = -1
 getReply_lock = thread.allocate_lock()
 getReply_lock.acquire()
+
+end_of_proccess = False
+end_of_proccess_lock = thread.allocate_lock()
+
+send_data_exit = thread.allocate_lock()
+send_data_exit.acquire()
+
+receive_data_exit = thread.allocate_lock()
+receive_data_exit.acquire()
 ########################## </VARIABLES> ##########################
 
 
@@ -259,6 +268,12 @@ def receive_data():
 
     while (1):
 
+        end_of_proccess_lock.acquire()
+        if (end_of_proccess):
+            end_of_proccess_lock.release()
+            break
+        end_of_proccess_lock.release()
+
         ready,_,disconnected = select.select (total_sockets, [], [], TIMEOUT)
 
         #Receive replies for ready sockets
@@ -369,11 +384,20 @@ def receive_data():
 
         mtx.release()
 
+    receive_data_exit.release()
+
 def send_data():
 
     global next_server
 
     while(1):
+
+
+        end_of_proccess_lock.acquire()
+        if (end_of_proccess):
+            end_of_proccess_lock.release()
+            break
+        end_of_proccess_lock.release()
 
 
         mtx.acquire()
@@ -439,6 +463,9 @@ def send_data():
                         new_requests_lock.release()
 
         mtx.release()
+
+    send_data_exit.release()
+
 ########################## </THREADS> ##########################
 
 
@@ -523,6 +550,22 @@ def setDiscoveryMulticast (multi_ip, port):
     MULTI_PORT = port
 
     init()
+
+def close () :
+
+    end_of_proccess_lock.acquire()
+    end_of_proccess = True
+    end_of_proccess_lock.release()
+
+    send_data_exit.acquire()
+    receive_data_exit.acquire()
+
+    total_sockets_lock.acquire()
+    for s in total_sockets:
+        s.close()
+    total_sockets = []
+    total_sockets_lock.release()
+
 
 
 

@@ -30,3 +30,6 @@ print "Min elapsed time:", min (elapsed_time) * 1000
 print "Average elapsed time:", sum(elapsed_time) * 10
 elapsed_time.sort()
 print "Median elapsed time:", elapsed_time[49] * 1000
+
+
+close()
