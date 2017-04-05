@@ -265,6 +265,7 @@ def receive_data():
 
     global waiting_reqid
     global next_server
+    global end_of_proccess
 
     while (1):
 
@@ -389,6 +390,7 @@ def receive_data():
 def send_data():
 
     global next_server
+    global end_of_proccess
 
     while(1):
 
@@ -552,6 +554,9 @@ def setDiscoveryMulticast (multi_ip, port):
     init()
 
 def close () :
+
+    global end_of_proccess
+    global total_sockets
 
     end_of_proccess_lock.acquire()
     end_of_proccess = True
