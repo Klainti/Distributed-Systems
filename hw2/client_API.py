@@ -71,6 +71,25 @@ getReply_lock = thread.allocate_lock()
 getReply_lock.acquire()
 ########################## </VARIABLES> ##########################
 
+
+########################## <INIT> ##########################
+def init():
+
+    global MY_IP
+
+    thread.start_new_thread(send_data,())
+    thread.start_new_thread(receive_data,())
+
+    s1 = os.popen('/sbin/ifconfig wlan0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
+    s2 = os.popen('/sbin/ifconfig eth0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
+    if (len(s1)>16 or len(s1) < 7):
+        MY_IP = s2
+    else:
+        MY_IP = s1
+
+    print "MY_IP:", MY_IP
+########################## </INIT> ##########################
+
 ########################## <THREADS' FUNCTIONS> ##########################
 #Find connected servers for svcid
 def find_connected_servers (svcid):
@@ -489,9 +508,6 @@ def getReply(reqid, timeout):
             time.sleep(0.001)
         return "ERROR"
 
-
-
-
 def setDiscoveryMulticast (multi_ip, port):
 
     global MULTI_IP
@@ -502,20 +518,6 @@ def setDiscoveryMulticast (multi_ip, port):
 
     init()
 
-def init():
 
-    global MY_IP
-
-    thread.start_new_thread(send_data,())
-    thread.start_new_thread(receive_data,())
-
-    s1 = os.popen('/sbin/ifconfig wlan0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
-    s2 = os.popen('/sbin/ifconfig eth0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
-    if (len(s1)>16 or len(s1) < 7):
-        MY_IP = s2
-    else:
-        MY_IP = s1
-
-    print "MY_IP:", MY_IP
 
 ########################## </API> ##########################

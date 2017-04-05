@@ -23,8 +23,8 @@ for i in xrange (100):
 for i in xrange (100):
     elapsed_time.append (reply_time[i]-send_time[i])
 
-print "Max elapsed time:", max (elapsed_time)
-print "Min elapsed time:", min (elapsed_time)
-print "Average elapsed time:", sum(elapsed_time)/100
+print "Max elapsed time:", max (elapsed_time) * 1000
+print "Min elapsed time:", min (elapsed_time) * 1000
+print "Average elapsed time:", sum(elapsed_time) * 10
 elapsed_time.sort()
-print "Median elapsed time:", elapsed_time[49]
+print "Median elapsed time:", elapsed_time[49] * 1000
