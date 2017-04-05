@@ -63,6 +63,8 @@ mtx = thread.allocate_lock()
 
 
 next_reqid = 0
+
+next_server = 0
 ########################## </VARIABLES> ##########################
 
 ########################## <THREADS' FUNCTIONS> ##########################
@@ -164,7 +166,7 @@ def add_server(svcid,socket):
     else:
         svcid_sock[svcid] = [socket]
 
-    print "Connected servers: ", svcid_sock
+    #print "Connected servers: ", svcid_sock
 
     svcid_sock_lock.release()
 
@@ -197,7 +199,7 @@ def send_multicast(svcid):
 
     try:
         #Send data to the multicast group
-        print 'Sending IP: %s and port: %d' % (MY_IP, tcp_port)
+        #print 'Sending IP: %s and port: %d' % (MY_IP, tcp_port)
         packet = construct_broadcast_packet(BROADCAST_ENCODING, MY_IP, tcp_port, svcid)
         sent = udp_sock.sendto(packet, multicast_group)
 
@@ -214,10 +216,10 @@ def send_multicast(svcid):
 
                 connected_servers += 1
 
-                print 'Connected at: %s' % str(addr)
+                #print 'Connected at: %s' % str(addr)
             except socket.timeout:
                 end_of_connections = True
-                print 'Time out, no more connections'
+                #print 'Time out, no more connections'
     finally:
         pass
 
@@ -229,6 +231,7 @@ def send_multicast(svcid):
 ########################## <THREADS> ##########################
 def receive_data():
 
+    global next_server
 
     while (1):
 
@@ -263,7 +266,7 @@ def receive_data():
 
             new_requests_lock.release()
 
-            print "Received packet with reqid:", reqid
+            #print "Received packet with reqid:", reqid
 
 
             #Add reply to dictionary replies
@@ -275,7 +278,7 @@ def receive_data():
             sock_requests_lock.acquire()
 
             sock_requests[sock].remove(reqid)
-            print "Remaining socket requests:", sock_requests
+            #print "Remaining socket requests:", sock_requests
 
             sock_requests_lock.release()
 
@@ -285,7 +288,7 @@ def receive_data():
         for sock in disconnected:
 
 
-            print "Socket:", sock, "offline"
+            #print "Socket:", sock, "offline"
 
             sock_requests_lock.acquire()
 
@@ -316,6 +319,8 @@ def receive_data():
             total_sockets.remove(sock)
             total_sockets_lock.release()
 
+            next_server = max(0, next_server -1)
+
             sock_svcid_lock.acquire()
             svcid = sock_svcid[sock]
             del sock_svcid[sock]
@@ -331,6 +336,8 @@ def receive_data():
         mtx.release()
 
 def send_data():
+
+    global next_server
 
     while(1):
 
@@ -353,7 +360,6 @@ def send_data():
 
                 tmp_servers = find_connected_servers(svcid)
 
-                pos = 0
                 #For each request with this service id
                 #Round-Robin servers
                 if (len(tmp_servers) > 0):
@@ -364,27 +370,27 @@ def send_data():
 
                             req[2] = True
 
-                            print "Sending packet with service id:", req[1]
+                            #print "Sending packet with service id:", req[1]
                             packet = construct_packet(REQ_ENCODING, req[0], req[1])
                             try:
-                                tmp_servers[pos].send(packet)
+                                tmp_servers[next_server].send(packet)
                             except socket.error:
                                 continue
-                            print "Time: {}".format(time.time())
+                            #print "Time: {}".format(time.time())
 
-                            sock_requests_add (tmp_servers[pos], req[1])
+                            sock_requests_add (tmp_servers[next_server], req[1])
 
-                            pos = (pos+1)%len(tmp_servers)
+                            next_server = (next_server+1)%len(tmp_servers)
 
                 else:
-                    print "No server for service:", svcid, "(send_multicast)"
+                    #print "No server for service:", svcid, "(send_multicast)"
 
                     #Find servers for svcid
                     connected_servers = send_multicast(svcid)
 
                     #Not a single server found (delete requests)
                     if (connected_servers == 0):
-                        print "No servers found for service:", svcid
+                        #print "No servers found for service:", svcid
 
                         new_requests_lock.acquire()
                         replies_lock.acquire()
@@ -406,7 +412,6 @@ def sendRequest (svcid, data):
 
     global next_reqid
 
-
     reqid_svcid_lock.acquire()
     reqid_svcid[next_reqid] = svcid
     reqid_svcid_lock.release()
@@ -418,7 +423,7 @@ def sendRequest (svcid, data):
     else:
         new_requests[svcid] = [[data, next_reqid, False]]
 
-    print "*****\nAdd request with reqid:", next_reqid, "\n*****"
+    #print "*****\nAdd request with reqid:", next_reqid, "\n*****"
 
     next_reqid += 1
 
@@ -454,7 +459,7 @@ def getReply (reqid, timeout):
                 taken_reqids.append (reqid)
                 return r
             replies_lock.release()
-            time.sleep(0.09)
+            time.sleep(0.05)
     else:
         found = False
         stime = time.clock()
@@ -468,7 +473,7 @@ def getReply (reqid, timeout):
                 foun = True
                 return r
             replies_lock.release()
-            time.sleep(0.09)
+            time.sleep(0.05)
         return "ERROR"
 
 
@@ -495,9 +500,11 @@ def init():
     s2 = os.popen('ifconfig eth0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
     print s1+s2
 
-    if (len(s1)>16):
+    if (len(s1)>16 or len(s1) < 7):
         MY_IP = s2
     else:
         MY_IP = s1
+
+    print "MY_IP:", MY_IP
 
 ########################## </API> ##########################

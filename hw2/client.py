@@ -10,8 +10,8 @@ setDiscoveryMulticast(multicast_ip,multicast_port)
 
 for i in xrange (10):
     reqid = sendRequest (i%2, "Request for " + str(i) )
-    s = getReply(reqid, 2)
-    print "Got reply for", reqid, ":", s
+    s = getReply(reqid, -1)
+    print "GOT REPLY FOR", reqid, ":", s
 
 while (1):
     pass
