@@ -70,6 +70,16 @@ def unregister(svcid):
 
     service_buffer_lock.acquire()
 
+    while (1):
+        # check if there are still replies to send
+        reply_buffer_lock.acquire()
+        if (len(reply_buffer) == 0):
+            reply_buffer_lock.release()
+            break
+        else:
+            reply_buffer_lock.release()
+            time.sleep(0.01)
+
     if (svcid in service_buffer):
         service_buffer.remove(svcid)
         unsupport_service(svcid)
