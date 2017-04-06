@@ -42,6 +42,12 @@ reply_buffer_lock = thread.allocate_lock()
 reqid_to_sock_buffer = {}
 reqid_to_sock_lock = thread.allocate_lock()
 
+############ Remove info for a client ##########
+clients_info = []
+sock_client_info = {}
+clients_info_lock = thread.allocate_lock()
+
+
 mtx = thread.allocate_lock()
 
 my_reqid = 0
@@ -139,6 +145,14 @@ def init_max_reqid(sock):
 def remove_client(sock):
 
     connection_buffer_lock.acquire()
+
+    # Remove client info
+    clients_info_lock.acquire()
+    client_ip, client_port, client_service = sock_client_info[sock]
+    del sock_client_info[sock]
+    del clients_info[clients_info.index((client_ip, client_port, client_service))]
+    print "Sock client info: {}".format(sock_client_info)
+    clients_info_lock.release()
 
     sock.close()
     # update connection list
@@ -295,9 +309,6 @@ def search_for_clients():
 
     udp_socket = socket_for_multicast(MULTI_IP,MULTI_PORT)
 
-    clients_svcid = {}
-
-
     # Try to connect with a client
     while (1):
 
@@ -307,28 +318,39 @@ def search_for_clients():
         terminate_threads_lock.release()
 
         # wait for a client
-        client_ip, client_port, client_demand_svc = receive_from_multicast(udp_socket)
-        if (not clients_svcid.has_key(client_ip)):
-            clients_svcid[client_ip] = [client_demand_svc]
-        elif (client_demand_svc not in clients_svcid[client_ip]):
-            clients_svcid[client_ip].append (client_demand_svc)
-        else:
+        client_ip, client_port, client_demand_svc, client_udp_port = receive_from_multicast(udp_socket)
+        if (client_ip is None or client_port is None or client_demand_svc is None or client_udp_port is None):
             continue
 
         service_buffer_lock.acquire()
         tmp_service_buffer = service_buffer
         service_buffer_lock.release()
 
+        clients_info_lock.acquire()
         #check the service which client looking for
         if (client_demand_svc in tmp_service_buffer):
-            tcp_socket = establish_connection(client_ip,client_port)
+
+            # check existance of this client!
+            if ((client_ip, client_udp_port, client_demand_svc) not in clients_info):
+
+                clients_info.append((client_ip, client_udp_port, client_demand_svc))
+                tcp_socket = establish_connection(client_ip,client_port)
+            else:
+                print "Duplicate connection for same client"
+                tcp_socket = None
         else:
             tcp_socket= None
 
         # Add the connection to buffer!
         if (tcp_socket is not None):
-            add_client(tcp_socket,client_demand_svc)
+            print "Add a client! {}".format((client_ip,client_port,client_demand_svc,client_udp_port))
+            add_client(tcp_socket, client_demand_svc)
             init_max_reqid(tcp_socket)
+            sock_client_info[tcp_socket] = (client_ip, client_udp_port, client_demand_svc)
+        else:
+            if ((client_ip, client_udp_port, client_demand_svc) in clients_info):
+                del clients_info[clients_info.index((client_ip, client_udp_port, client_demand_svc))]
+        clients_info_lock.release()
 
     global thread_end
     udp_socket.close()
@@ -365,7 +387,7 @@ def receive_from_clients_thread():
                     packet = ""
 
                 if (len(packet) != 1024):
-                    #print sock.getpeername(), "Unreachable"
+                    print sock.getpeername(), "Unreachable"
                     mtx.acquire()
                     remove_client(sock)
                     clean_up_requests(sock)
