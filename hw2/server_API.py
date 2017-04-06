@@ -295,6 +295,9 @@ def search_for_clients():
 
     udp_socket = socket_for_multicast(MULTI_IP,MULTI_PORT)
 
+    clients_svcid = {}
+
+
     # Try to connect with a client
     while (1):
 
@@ -305,7 +308,11 @@ def search_for_clients():
 
         # wait for a client
         client_ip, client_port, client_demand_svc = receive_from_multicast(udp_socket)
-        if (client_ip is None):
+        if (not clients_svcid.has_key(client_ip)):
+            clients_svcid[client_ip] = [client_demand_svc]
+        elif (client_demand_svc not in clients_svcid[client_ip]):
+            clients_svcid[client_ip].append (client_demand_svc)
+        else:
             continue
 
         service_buffer_lock.acquire()
