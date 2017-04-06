@@ -334,6 +334,8 @@ def receive_packets_from_ready (ready):
 
     global waiting_reqid
 
+    disconnected = []
+
     for sock in ready:
 
         try:
@@ -387,6 +389,8 @@ def receive_packets_from_ready (ready):
 
         sock_requests_lock.release()
 
+    return disconnected
+
 #Send requests for svcid to sockets
 def send_packets_for_svcid (svcid, sockets, requests):
 
@@ -403,7 +407,7 @@ def send_packets_for_svcid (svcid, sockets, requests):
 
             sock_requests_add (sockets[next_server[svcid]], req[1])
 
-            print "Sending packet with service id:", req[1]
+            #print "Sending packet with service id:", req[1]
             packet = construct_packet(REQ_ENCODING, req[0], req[1])
             try:
                 sockets[next_server[svcid]].send(packet)
@@ -424,9 +428,9 @@ def receive_data():
 
         ready,_,disconnected = select.select (total_sockets, [], [], TIMEOUT)
 
-        receive_packets_from_ready (ready)
+        disconnected_more = receive_packets_from_ready (ready)
 
-        remove_disconnected_sockets(disconnected)
+        remove_disconnected_sockets(disconnected+disconnected_more)
 
     #print "Receive data terminated"
     receive_data_exit.release()
