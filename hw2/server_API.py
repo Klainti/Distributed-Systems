@@ -151,7 +151,6 @@ def remove_client(sock):
     client_ip, client_port, client_service = sock_client_info[sock]
     del sock_client_info[sock]
     del clients_info[clients_info.index((client_ip, client_port, client_service))]
-    print "Sock client info: {}".format(sock_client_info)
     clients_info_lock.release()
 
     sock.close()
@@ -347,9 +346,6 @@ def search_for_clients():
             add_client(tcp_socket, client_demand_svc)
             init_max_reqid(tcp_socket)
             sock_client_info[tcp_socket] = (client_ip, client_udp_port, client_demand_svc)
-        else:
-            if ((client_ip, client_udp_port, client_demand_svc) in clients_info):
-                del clients_info[clients_info.index((client_ip, client_udp_port, client_demand_svc))]
         clients_info_lock.release()
 
     global thread_end

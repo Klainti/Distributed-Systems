@@ -34,12 +34,12 @@ def receive_from_multicast(sock):
     #print ('waiting to receive client from multicast!')
     try:
         packet, address = sock.recvfrom(1024)
-        print "Addr: {}".format(address)
     except socket.timeout:
-        return (None, None, None)
+        return (None, None, None, None)
     ipaddr, port, svcid = deconstruct_packet(BROADCAST_ENCODING,packet)
 
     #remove null bytes!
     ipaddr = ipaddr.rstrip('\0')
+    ipaddr = ipaddr.rstrip('\n')
 
     return (ipaddr, port, svcid, address[1])
