@@ -352,9 +352,13 @@ def receive_from_clients_thread():
             readable,_,_  = select.select(clients, [], [],TIMEOUT)
 
             for sock in readable:
-                packet, addr = sock.recvfrom(1024)
+                try:
+                    packet, addr = sock.recvfrom(1024)
+                except socket.error:
+                    packet = ""
+
                 if (len(packet) != 1024):
-                    print sock.getpeername(), "Unreachable"
+                    #print sock.getpeername(), "Unreachable"
                     mtx.acquire()
                     remove_client(sock)
                     clean_up_requests(sock)

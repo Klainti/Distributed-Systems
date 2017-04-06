@@ -14,13 +14,26 @@ multicast_port = 10000
 
 setDiscoveryMulticast(multicast_ip,multicast_port)
 
-for i in xrange (100):
-    send_time.append (time.clock())
-    reqid = sendRequest (1, "Request nr:" + str(i) )
+sreqid = -1
+stime = time.clock()
 
-    s = getReply(reqid, -1)
-    reply_time.append (time.clock())
-    time.sleep (0.05)
+getReply_reqid = 0
+
+while (1):
+
+    for i in xrange (10):
+        send_time.append (time.clock())
+        reqid = sendRequest (1, "Request nr:" + str(i) )
+
+    for i in xrange (10):
+        s = getReply(getReply_reqid, -1)
+        getReply_reqid += 1
+        if (time.clock()-stime >= 10):
+
+            print "Received", getReply_reqid-sreqid, "in time", time.clock()-stime
+            stime = time.clock()
+            sreqid = reqid
+        reply_time.append (time.clock())
 
 for i in xrange (100):
     elapsed_time.append (reply_time[i]-send_time[i])
