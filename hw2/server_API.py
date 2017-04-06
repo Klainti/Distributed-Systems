@@ -5,7 +5,7 @@ import select
 from packet_struct import *
 from multicast_module import *
 from sys import exit
-
+from operator import itemgetter
 
 thread_end = 0
 terminate_threads = False
@@ -198,7 +198,7 @@ def map_reqid_to_sock(server_reqid,sock,client_reqid):
     return 0
 
 # Add a request to the request buffer!
-def add_request(svcid,sock,data,reqid):
+def add_request(svcid, sock, data, reqid, arrived_time):
 
     #check scvid supported from server
     service_buffer_lock.acquire()
@@ -210,9 +210,9 @@ def add_request(svcid,sock,data,reqid):
     request_buffer_lock.acquire()
 
     if (svcid not in request_buffer.keys()):
-        request_buffer[svcid] = [(sock,data,reqid)]
+        request_buffer[svcid] = [(sock, data, reqid, arrived_time)]
     else:
-        request_buffer[svcid].append((sock,data,reqid))
+        request_buffer[svcid].append((sock, data, reqid, arrived_time))
 
     request_buffer_lock.release()
 
@@ -222,7 +222,7 @@ def clean_up_requests(sock):
     request_buffer_lock.acquire()
 
     for key in request_buffer.keys():
-        i=0
+        i = 0
         length = len(request_buffer[key])
         while(i<length):
             if (sock == request_buffer[key][i][0]):
@@ -242,6 +242,7 @@ def get_sock_from_requests(svcid):
             request_buffer_lock.release()
             return None
         else:
+            request_buffer[svcid].sort(key=itemgetter(3))
             request = request_buffer[svcid][0]
 
             #update request buffer
@@ -335,14 +336,12 @@ def search_for_clients():
                 clients_info.append((client_ip, client_udp_port, client_demand_svc))
                 tcp_socket = establish_connection(client_ip,client_port)
             else:
-                print "Duplicate connection for same client"
                 tcp_socket = None
         else:
             tcp_socket= None
 
         # Add the connection to buffer!
         if (tcp_socket is not None):
-            print "Add a client! {}".format((client_ip,client_port,client_demand_svc,client_udp_port))
             add_client(tcp_socket, client_demand_svc)
             init_max_reqid(tcp_socket)
             sock_client_info[tcp_socket] = (client_ip, client_udp_port, client_demand_svc)
@@ -408,7 +407,7 @@ def receive_from_clients_thread():
                         svcid = map_sock_to_service(sock)
 
                         if (svcid != None):
-                            add_request(svcid,sock,data.rstrip('\0'),reqid)
+                            add_request(svcid, sock, data.rstrip('\0'),reqid, time.clock())
                         else:
                             'Unsupported service'
 
