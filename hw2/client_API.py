@@ -64,7 +64,7 @@ mtx = thread.allocate_lock()
 
 next_reqid = 0
 
-next_server = 0
+next_server = {}
 
 waiting_reqid = -1
 getReply_lock = thread.allocate_lock()
@@ -115,7 +115,6 @@ def find_connected_servers (svcid):
 
     return tmp_list
 
-
 def sock_requests_add (sock, reqid):
 
     sock_requests_lock.acquire()
@@ -124,6 +123,7 @@ def sock_requests_add (sock, reqid):
     else:
         sock_requests[sock] = [reqid]
     sock_requests_lock.release()
+
 
 
 def check_for_unactive_sockets():
@@ -186,6 +186,8 @@ def check_for_unactive_sockets():
     sock_time_lock.release()
 
     mtx.release()
+
+
 
 # Add a server to the svcid_sock
 def add_server(svcid,socket):
@@ -258,91 +260,34 @@ def send_multicast(svcid):
     return connected_servers
 
     tcp_socket.close()
-########################## </THREADS' FUNCTIONS> ##########################
 
-########################## <THREADS> ##########################
-def receive_data():
+#Check if close has been called
+def check_for_end ():
 
-    global waiting_reqid
-    global next_server
     global end_of_proccess
 
-    while (1):
-
-        end_of_proccess_lock.acquire()
-        if (end_of_proccess):
-            end_of_proccess_lock.release()
-            break
+    end_of_proccess_lock.acquire()
+    if (end_of_proccess):
         end_of_proccess_lock.release()
+        return True
+    end_of_proccess_lock.release()
+    return False
 
-        ready,_,disconnected = select.select (total_sockets, [], [], TIMEOUT)
+#Delete every information for disconnected servers
+def remove_disconnected_sockets (disconnected):
 
-        #Receive replies for ready sockets
-        for sock in ready:
+    mtx.acquire()
 
-            try:
-                packet = sock.recv (1024)
-            except socket.error:
-                disconnected.append (sock)
-                continue
-
-            #If a socket sends empy packet means it went offline
-            if (packet == ""):
-                disconnected.append (sock)
-                continue
+    for sock in disconnected:
 
 
-            data, reqid = deconstruct_packet (REQ_ENCODING, packet)
+        print "Socket:", sock, "offline"
 
-            #Delete the request from the dictionary new_requests
-            reqid_svcid_lock.acquire()
-            svcid = reqid_svcid[reqid]
-            reqid_svcid_lock.release()
+        sock_requests_lock.acquire()
 
-            new_requests_lock.acquire()
+        #Every request send to the disconnected socket must be send again
+        if (sock_requests.has_key(sock)):
 
-            pos = 0
-            while (pos < len(new_requests[svcid])):
-                if (new_requests[svcid][pos][1] == reqid):
-                    del new_requests[svcid][pos]
-                    break
-                pos += 1
-
-            new_requests_lock.release()
-
-            #print "Received packet with reqid:", reqid
-
-
-            #Add reply to dictionary replies
-            replies_lock.acquire()
-            replies[reqid] = data
-            if (waiting_reqid == reqid):
-                getReply_lock.release()
-            replies_lock.release()
-
-            #Remove request from dictionary sock_requests
-            sock_requests_lock.acquire()
-
-            try:
-                sock_requests[sock].remove(reqid)
-            except:
-                print reqid
-                pass
-            #print "Remaining socket requests:", sock_requests
-
-            sock_requests_lock.release()
-
-        #The part of deleting a socket mustn't execute together with send_data
-        mtx.acquire()
-
-        for sock in disconnected:
-
-
-            print "Socket:", sock, "offline"
-
-            sock_requests_lock.acquire()
-
-            #Every request send to the disconnected socket must be send again
             for r in sock_requests[sock]:
 
                 reqid_svcid_lock.acquire()
@@ -356,51 +301,141 @@ def receive_data():
                     if (new_requests[svcid][pos][1] == r):
                         new_requests[svcid][pos][2] = False
                         break
-                    pos += 1
+                        pos += 1
 
-                new_requests_lock.release()
+                        new_requests_lock.release()
 
             del sock_requests[sock]
 
-            sock_requests_lock.release()
+        sock_requests_lock.release()
 
-            #Remove socket from every buffer
-            total_sockets_lock.acquire()
-            total_sockets.remove(sock)
-            total_sockets_lock.release()
+        #Remove socket from every buffer
+        total_sockets_lock.acquire()
+        total_sockets.remove(sock)
+        total_sockets_lock.release()
 
-            next_server = max(0, next_server -1)
 
-            sock_svcid_lock.acquire()
-            svcid = sock_svcid[sock]
-            del sock_svcid[sock]
-            sock_svcid_lock.release()
+        sock_svcid_lock.acquire()
+        svcid = sock_svcid[sock]
+        del sock_svcid[sock]
+        sock_svcid_lock.release()
 
-            svcid_sock_lock.acquire()
-            svcid_sock[svcid].remove(sock)
-            svcid_sock_lock.release()
+        svcid_sock_lock.acquire()
+        svcid_sock[svcid].remove(sock)
+        svcid_sock_lock.release()
 
-            #Finally close the socket
-            sock.close()
+        #Finally close the socket
+        sock.close()
 
-        mtx.release()
+    mtx.release()
 
+#Receive packets from ready queue
+def receive_packets_from_ready (ready):
+
+    global waiting_reqid
+
+    for sock in ready:
+
+        try:
+            packet = sock.recv (1024)
+        except socket.error:
+            disconnected.append (sock)
+            continue
+
+        #If a socket sends empy packet means it went offline
+        if (packet == ""):
+            disconnected.append (sock)
+            continue
+
+
+        data, reqid = deconstruct_packet (REQ_ENCODING, packet)
+
+        #Delete the request from the dictionary new_requests
+        reqid_svcid_lock.acquire()
+        svcid = reqid_svcid[reqid]
+        reqid_svcid_lock.release()
+
+        new_requests_lock.acquire()
+
+        pos = 0
+        while (pos < len(new_requests[svcid])):
+            if (new_requests[svcid][pos][1] == reqid):
+                del new_requests[svcid][pos]
+                break
+            pos += 1
+
+        new_requests_lock.release()
+
+        #print "Received packet with reqid:", reqid
+
+
+        #Add reply to dictionary replies
+        replies_lock.acquire()
+        replies[reqid] = data
+        if (waiting_reqid == reqid):
+            getReply_lock.release()
+        replies_lock.release()
+
+        #Remove request from dictionary sock_requests
+        sock_requests_lock.acquire()
+
+        try:
+            sock_requests[sock].remove(reqid)
+        except:
+            pass
+        #print "Remaining socket requests:", sock_requests
+
+        sock_requests_lock.release()
+
+#Send requests for svcid to sockets
+def send_packets_for_svcid (svcid, sockets, requests):
+
+    global next_server
+
+    if (next_server[svcid] >= len(sockets)):
+        next_server[svcid] = len(sockets)-1
+
+    for req in requests[svcid]:
+
+        if (req[2] == False):
+
+            req[2] = True
+
+            sock_requests_add (sockets[next_server[svcid]], req[1])
+
+            print "Sending packet with service id:", req[1]
+            packet = construct_packet(REQ_ENCODING, req[0], req[1])
+            try:
+                sockets[next_server[svcid]].send(packet)
+            except socket.error:
+                continue
+            #print "Time: {}".format(time.time())
+
+            next_server[svcid] = (next_server[svcid]+1)%len(sockets)
+
+########################## </THREADS' FUNCTIONS> ##########################
+
+########################## <THREADS> ##########################
+def receive_data():
+
+    global waiting_reqid
+
+    while (not check_for_end()):
+
+        ready,_,disconnected = select.select (total_sockets, [], [], TIMEOUT)
+
+        receive_packets_from_ready (ready)
+
+        remove_disconnected_sockets(disconnected)
+
+    #print "Receive data terminated"
     receive_data_exit.release()
 
 def send_data():
 
     global next_server
-    global end_of_proccess
 
-    while(1):
-
-
-        end_of_proccess_lock.acquire()
-        if (end_of_proccess):
-            end_of_proccess_lock.release()
-            break
-        end_of_proccess_lock.release()
-
+    while(not check_for_end()):
 
         mtx.acquire()
 
@@ -420,30 +455,9 @@ def send_data():
 
                 tmp_servers = find_connected_servers(svcid)
 
-                #For each request with this service id
-                #Round-Robin servers
+                #There are known servers for svcid
                 if (len(tmp_servers) > 0):
-
-                    for req in tmp_requests[svcid]:
-
-                        if (req[2] == False):
-
-                            req[2] = True
-
-                            sock_requests_add (tmp_servers[next_server], req[1])
-
-                            #print "Sending packet with service id:", req[1]
-                            packet = construct_packet(REQ_ENCODING, req[0], req[1])
-                            try:
-                                tmp_servers[next_server].send(packet)
-                            except socket.error:
-                                continue
-                            #print "Time: {}".format(time.time())
-
-
-
-                            next_server = (next_server+1)%len(tmp_servers)
-
+                    send_packets_for_svcid (svcid, tmp_servers, tmp_requests)
                 else:
                     #print "No server for service:", svcid, "(send_multicast)"
 
@@ -463,16 +477,18 @@ def send_data():
 
                         replies_lock.release()
                         new_requests_lock.release()
+                    else:
+                        next_server[svcid] = 0
 
         mtx.release()
 
+    #print "Send data terminated"
     send_data_exit.release()
 
 ########################## </THREADS> ##########################
 
 
 ########################## <API> ##########################
-
 def sendRequest (svcid, data):
 
     global next_reqid
@@ -489,7 +505,6 @@ def sendRequest (svcid, data):
         new_requests[svcid] = [[data, next_reqid, False]]
 
     #print "*****\nAdd request with reqid:", next_reqid, "\n*****"
-
     next_reqid += 1
 
     new_requests_lock.release()
@@ -570,8 +585,4 @@ def close () :
         s.close()
     total_sockets = []
     total_sockets_lock.release()
-
-
-
-
 ########################## </API> ##########################
