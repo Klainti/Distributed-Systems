@@ -1,6 +1,6 @@
 from server_API import *
 
-T = float (raw_input("Sleep time:"))
+T = float (raw_input("Sleep time (in msec):")) / 1000
 print T
 
 register(1)
@@ -14,11 +14,6 @@ reqid = -1
 buf = ''
 while(1):
     reqid, buf = getRequest(1,buf,1024)
-    s = time.clock()
-    time.sleep (T)
-    print "Sleep for", time.clock()-s
+    if (T > 0):
+        time.sleep (T)
     sendReply (reqid, str(reqid), len(str(reqid)))
-
-
-while(1):
-    pass
