@@ -32,6 +32,9 @@ TIMEOUT = 0.5
 
 
 ########################## <VARIABLES> ##########################
+#Create the datagram socket
+udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
 svcid_sock = {}
 svcid_sock_lock = thread.allocate_lock()
 
@@ -219,10 +222,6 @@ def send_multicast(svcid):
     multicast_group = (MULTI_IP,MULTI_PORT)
 
     tcp_port = 0
-
-
-    #Create the datagram socket
-    udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     #Create TCP socket
     tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
