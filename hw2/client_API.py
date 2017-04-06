@@ -88,6 +88,7 @@ def init():
 
     thread.start_new_thread(send_data,())
     thread.start_new_thread(receive_data,())
+    thread.start_new_thread(multicast_thread,())
 
     s1 = os.popen('/sbin/ifconfig wlan0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
     s2 = os.popen('/sbin/ifconfig eth0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
@@ -303,7 +304,7 @@ def remove_disconnected_sockets (disconnected):
                         break
                         pos += 1
 
-                        new_requests_lock.release()
+                new_requests_lock.release()
 
             del sock_requests[sock]
 
@@ -488,6 +489,33 @@ def send_data():
 
     #print "Send data terminated"
     send_data_exit.release()
+
+def multicast_thread ():
+
+    pos = 0
+
+
+    while (1):
+
+        time.sleep (2)
+
+        mtx.acquire()
+
+        svcid_sock_lock.acquire()
+
+        if (pos > len(svcid_sock.keys())):
+            pos = 0
+        if (len(svcid_sock.keys()) == 0):
+            continue
+
+        svcid = svcid_sock.keys()[pos]
+        pos = (pos + 1) % len(svcid_sock.keys())
+
+        svcid_sock_lock.release()
+
+        send_multicast (svcid)
+
+        mtx.release()
 
 ########################## </THREADS> ##########################
 
