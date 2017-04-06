@@ -19,22 +19,25 @@ stime = time.clock()
 
 getReply_reqid = 0
 
-while (1):
+try:
+    while (1):
 
-    for i in xrange (10):
-        send_time.append (time.clock())
-        reqid = sendRequest (1, "Request nr:" + str(i) )
+        for i in xrange (10):
+            send_time.append (time.clock())
+            reqid = sendRequest (1, "Request nr:" + str(i) )
 
-    for i in xrange (10):
-        s = getReply(getReply_reqid, -1)
-        getReply_reqid += 1
-        if (time.clock()-stime >= 10):
+        for i in xrange (10):
+            s = getReply(getReply_reqid, -1)
+            getReply_reqid += 1
+            if (time.clock()-stime >= 10):
 
-            print "Received", getReply_reqid-sreqid, "in time", time.clock()-stime
-            stime = time.clock()
-            sreqid = reqid
-        reply_time.append (time.clock())
-
+                print "Received", getReply_reqid-sreqid, "in time", time.clock()-stime
+                stime = time.clock()
+                sreqid = reqid
+            reply_time.append (time.clock())
+except KeyboardInterrupt:
+    close()
+'''
 for i in xrange (100):
     elapsed_time.append (reply_time[i]-send_time[i])
 
@@ -46,3 +49,4 @@ print "Median elapsed time:", elapsed_time[49] * 1000
 
 
 close()
+'''
