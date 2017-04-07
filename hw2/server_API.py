@@ -248,20 +248,16 @@ def get_sock_from_requests(svcid):
         else:
             connection_buffer_lock.acquire()
             while (1):
-                if (request_buffer[svcid] == []):
-                    connection_buffer_lock.release()
-                    request_buffer_lock.release()
-                    return None
                 found = False
-                if (RR_next_req > len(connection_list)):
+                if (RR_next_req >= len(connection_list)):
                     RR_next_req = 0
 
                 try:
                     next_sock = connection_list[RR_next_req]
-                except IndexError:
+                except:
                     connection_buffer_lock.release()
                     request_buffer_lock.release()
-                    return None
+                    RR_next_req = 0
 
                 for tuples in request_buffer[svcid]:
                     if (next_sock == tuples[0]):
@@ -404,10 +400,6 @@ def receive_from_clients_thread():
         if (len(clients)):
 
             readable,_, closed  = select.select(clients, [], [],TIMEOUT)
-            mtx.acquire()
-
-            if (len(readable) > 0):
-                print "Readable:", readable
 
             if (len(closed) > 0):
                 print "Closed:", closed
@@ -451,8 +443,6 @@ def receive_from_clients_thread():
                         else:
                             'Unsupported service'
 
-            mtx.release()
-
     global thread_end
     thread_end += 1
 
@@ -473,7 +463,6 @@ def send_to_clients_thread():
             break
         terminate_threads_lock.release()
 
-        mtx.acquire()
         reply_buffer_lock.acquire()
         tmp_reply_buffer = reply_buffer
         reply_buffer_lock.release()
@@ -488,20 +477,13 @@ def send_to_clients_thread():
                 send_data_size = sock.send(packet)
                 print send_data_size
                 if (send_data_size == 0):
-                    print "Remove_client"
-                    remove_client(sock)
-                    print "clean_up_requests"
-                    clean_up_requests(sock)
-                    print "clean_up_replies"
+                    print sock
                     clean_up_replies(None,sock)
-                    print "clean_up_received_reqids"
-                    clean_up_received_reqids(sock)
-                    print "Done clean up"
+                    print reply_buffer
                 else:
                     clean_up_replies(key,None)
             except socket.error:
                 pass
-        mtx.release()
 
     global thread_end
     thread_end += 1
@@ -526,8 +508,6 @@ def getRequest (svcid,buf,length):
     while (tmp_tuple == None):
         time.sleep (0.001)
         tmp_tuple = get_sock_from_requests(svcid)
-
-
 
     sock = tmp_tuple[0]
     buf = tmp_tuple[1]
