@@ -353,6 +353,8 @@ def search_for_clients():
         if (client_ip is None or client_port is None or client_demand_svc is None or client_udp_port is None):
             continue
 
+        print "Received multicast at", time.time() 
+
         service_buffer_lock.acquire()
         tmp_service_buffer = service_buffer
         service_buffer_lock.release()

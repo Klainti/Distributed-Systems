@@ -81,6 +81,9 @@ send_data_exit.acquire()
 
 receive_data_exit = thread.allocate_lock()
 receive_data_exit.acquire()
+
+multicast_mtx = thread.allocate_lock()
+
 ########################## </VARIABLES> ##########################
 
 
@@ -219,6 +222,8 @@ def add_server(svcid,socket):
 #Send multicast for svcid
 def send_multicast(svcid):
 
+    multicast_mtx.acquire()
+
     multicast_group = (MULTI_IP,MULTI_PORT)
 
     tcp_port = 0
@@ -236,6 +241,7 @@ def send_multicast(svcid):
         #print 'Sending IP: %s and port: %d' % (MY_IP, tcp_port)
         packet = construct_broadcast_packet(BROADCAST_ENCODING, MY_IP, tcp_port, svcid)
         sent = udp_sock.sendto(packet, multicast_group)
+        print "Send multicast at", time.time()
 
         end_of_connections = False
 
@@ -246,7 +252,7 @@ def send_multicast(svcid):
                 conn, addr = tcp_socket.accept()
                 conn.send('Hello')
 
-                print "Connected to", conn
+                print "Connected to", conn, time.time()
 
                 add_server(svcid,conn)
 
@@ -256,12 +262,14 @@ def send_multicast(svcid):
             except socket.timeout:
                 end_of_connections = True
                 #print 'Time out, no more connections'
-    finally:
+    except socket.error:
         pass
 
     return connected_servers
 
     tcp_socket.close()
+
+    multicast_mtx.release()
 
 #Check if close has been called
 def check_for_end ():
@@ -413,6 +421,8 @@ def send_packets_for_svcid (svcid, sockets, requests):
             packet = construct_packet(REQ_ENCODING, req[0], req[1])
             try:
                 sockets[next_server[svcid]].send(packet)
+                if (req[1] == 0):
+                    print "Thread_send at", time.time()
             except socket.error:
                 continue
             #print "Time: {}".format(time.time())
@@ -503,7 +513,6 @@ def multicast_thread ():
 
         time.sleep (2)
 
-        mtx.acquire()
 
         svcid_sock_lock.acquire()
 
@@ -518,8 +527,6 @@ def multicast_thread ():
         svcid_sock_lock.release()
 
         send_multicast (svcid)
-
-        mtx.release()
 
 ########################## </THREADS> ##########################
 
