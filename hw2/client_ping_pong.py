@@ -16,7 +16,7 @@ setDiscoveryMulticast(multicast_ip,multicast_port)
 
 sreqid = -1
 stime = time.clock()
-
+error = 0
 getReply_reqid = 0
 
 try:
@@ -28,13 +28,16 @@ try:
 
         for i in xrange (10):
             s = getReply(getReply_reqid, -1)
-            print "Got reqid:", getReply_reqid
+            #print "Got reqid:", getReply_reqid
+            if (s == "ERROR"):
+                error += 1
             getReply_reqid += 1
             if (time.clock()-stime >= 10):
 
-                print "Received", getReply_reqid-sreqid - 1, "in time", time.clock()-stime
+                print "Received", getReply_reqid-sreqid - 1 - error, "in time", time.clock()-stime
                 stime = time.clock()
                 sreqid = getReply_reqid
+                error = 0
             reply_time.append (time.clock())
 except KeyboardInterrupt:
     close()

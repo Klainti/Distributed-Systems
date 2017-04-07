@@ -292,13 +292,11 @@ def remove_disconnected_sockets (disconnected):
 
             for r in sock_requests[sock]:
 
-                print "Remove from reqid_svcid"
                 reqid_svcid_lock.acquire()
                 svcid = reqid_svcid[r]
                 reqid_svcid_lock.release()
 
 
-                print "Remove from new_requests"
                 new_requests_lock.acquire()
 
                 pos = 0
@@ -314,19 +312,16 @@ def remove_disconnected_sockets (disconnected):
 
         sock_requests_lock.release()
 
-        print "Remove from total_sockets"
         #Remove socket from every buffer
         total_sockets_lock.acquire()
         total_sockets.remove(sock)
         total_sockets_lock.release()
 
-        print "Remove from sock_svcid"
         sock_svcid_lock.acquire()
         svcid = sock_svcid[sock]
         del sock_svcid[sock]
         sock_svcid_lock.release()
 
-        print "Remove from svcid"
         svcid_sock_lock.acquire()
         svcid_sock[svcid].remove(sock)
         svcid_sock_lock.release()
@@ -358,8 +353,6 @@ def receive_packets_from_ready (ready):
 
 
         data, reqid = deconstruct_packet (REQ_ENCODING, packet)
-
-        print "Receive_thread: received",reqid
 
         #Delete the request from the dictionary new_requests
         reqid_svcid_lock.acquire()
@@ -472,14 +465,14 @@ def send_data():
                 if (len(tmp_servers) > 0):
                     send_packets_for_svcid (svcid, tmp_servers, tmp_requests)
                 else:
-                    print "No server for service:", svcid, "(send_multicast)"
+                    #print "No server for service:", svcid, "(send_multicast)"
 
                     #Find servers for svcid
                     connected_servers = send_multicast(svcid)
 
                     #Not a single server found (delete requests)
                     if (connected_servers == 0):
-                        print "No servers found for service:", svcid
+                        #print "No servers found for service:", svcid
 
                         new_requests_lock.acquire()
                         replies_lock.acquire()
@@ -487,6 +480,9 @@ def send_data():
                         for req in new_requests[svcid]:
                             replies[req[1]] = "ERROR"
                         del new_requests[svcid]
+
+                        if (waiting_reqid > -1):
+                            getReply_lock.release()
 
                         replies_lock.release()
                         new_requests_lock.release()
