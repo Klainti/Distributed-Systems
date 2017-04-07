@@ -14,6 +14,9 @@ terminate_threads_lock = thread.allocate_lock()
 terminate_server = thread.allocate_lock()
 terminate_server.acquire()
 
+
+RR_next_req = 0
+
 MULTI_IP = ""
 MULTI_PORT = 0
 
@@ -235,18 +238,42 @@ def clean_up_requests(sock):
 
 def get_sock_from_requests(svcid):
 
-    request_buffer_lock.acquire()
+    global RR_next_req
 
+    request_buffer_lock.acquire()
     if (svcid in request_buffer.keys()):
-        if (request_buffer[svcid]==[]):
+        if (request_buffer[svcid] == []):
             request_buffer_lock.release()
             return None
         else:
-            request_buffer[svcid].sort(key=itemgetter(3))
-            request = request_buffer[svcid][0]
+            connection_buffer_lock.acquire()
+            while (1):
+                if (request_buffer[svcid] == []):
+                    connection_buffer_lock.release()
+                    request_buffer_lock.release()
+                    return None
+                found = False
+                if (RR_next_req > len(connection_list)):
+                    RR_next_req = 0
 
-            #update request buffer
-            del request_buffer[svcid][0]
+                try:
+                    next_sock = connection_list[RR_next_req]
+                except IndexError:
+                    connection_buffer_lock.release()
+                    request_buffer_lock.release()
+                    return None
+
+                for tuples in request_buffer[svcid]:
+                    if (next_sock == tuples[0]):
+                        request = tuples
+                        del request_buffer[svcid][request_buffer[svcid].index(tuples)]
+                        found = True
+                        break
+
+                RR_next_req = (RR_next_req+1) % len(connection_list)
+                if (found is True):
+                    break
+            connection_buffer_lock.release()
 
             request_buffer_lock.release()
             return request
@@ -382,7 +409,7 @@ def receive_from_clients_thread():
                     packet = ""
 
                 if (len(packet) != 1024):
-                    print sock.getpeername(), "Unreachable"
+                    print "One client off!"
                     mtx.acquire()
                     remove_client(sock)
                     clean_up_requests(sock)
