@@ -299,9 +299,11 @@ def clean_up_replies(server_reqid,sock):
     reply_buffer_lock.acquire()
 
     if (sock != None):
+        print reply_buffer
         for key in reply_buffer.keys():
             if (sock == reply_buffer[key][0]):
                 del reply_buffer[key]
+                print reply_buffer
     elif (server_reqid != None):
         del reply_buffer[server_reqid]
 
@@ -400,7 +402,15 @@ def receive_from_clients_thread():
 
         # receive over multiple sockets!
         if (len(clients)):
-            readable,_,_  = select.select(clients, [], [],TIMEOUT)
+
+            readable,_, closed  = select.select(clients, [], [],TIMEOUT)
+            mtx.acquire()
+
+            if (len(readable) > 0):
+                print "Readable:", readable
+
+            if (len(closed) > 0):
+                print "Closed:", closed
 
             for sock in readable:
                 try:
@@ -410,12 +420,15 @@ def receive_from_clients_thread():
 
                 if (len(packet) != 1024):
                     print "One client off!"
-                    mtx.acquire()
+                    print "Remove_client"
                     remove_client(sock)
+                    print "clean_up_requests"
                     clean_up_requests(sock)
+                    print "clean_up_replies"
                     clean_up_replies(None,sock)
+                    print "clean_up_received_reqids"
                     clean_up_received_reqids(sock)
-                    mtx.release()
+                    print "Done clean up"
                 else:
                     data, reqid = deconstruct_packet(REQ_ENCODING,packet)
 
@@ -437,6 +450,8 @@ def receive_from_clients_thread():
                             add_request(svcid, sock, data.rstrip('\0'),reqid, time.clock())
                         else:
                             'Unsupported service'
+
+            mtx.release()
 
     global thread_end
     thread_end += 1
@@ -466,11 +481,24 @@ def send_to_clients_thread():
         # Send replies!!
         for key in tmp_reply_buffer.keys():
             try:
-                sock,data,client_reqid = tmp_reply_buffer[key]
 
+                sock,data,client_reqid = tmp_reply_buffer[key]
+                #print sock
                 packet = construct_packet(REQ_ENCODING,data,client_reqid)
-                sock.send(packet)
-                clean_up_replies(key,None)
+                send_data_size = sock.send(packet)
+                print send_data_size
+                if (send_data_size == 0):
+                    print "Remove_client"
+                    remove_client(sock)
+                    print "clean_up_requests"
+                    clean_up_requests(sock)
+                    print "clean_up_replies"
+                    clean_up_replies(None,sock)
+                    print "clean_up_received_reqids"
+                    clean_up_received_reqids(sock)
+                    print "Done clean up"
+                else:
+                    clean_up_replies(key,None)
             except socket.error:
                 pass
         mtx.release()

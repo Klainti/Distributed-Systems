@@ -28,12 +28,13 @@ try:
 
         for i in xrange (10):
             s = getReply(getReply_reqid, -1)
+            print "Got reqid:", getReply_reqid
             getReply_reqid += 1
             if (time.clock()-stime >= 10):
 
-                print "Received", getReply_reqid-sreqid, "in time", time.clock()-stime
+                print "Received", getReply_reqid-sreqid - 1, "in time", time.clock()-stime
                 stime = time.clock()
-                sreqid = reqid
+                sreqid = getReply_reqid
             reply_time.append (time.clock())
 except KeyboardInterrupt:
     close()
