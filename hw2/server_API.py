@@ -45,6 +45,8 @@ reply_buffer_lock = thread.allocate_lock()
 reqid_to_sock_buffer = {}
 reqid_to_sock_lock = thread.allocate_lock()
 
+remove_connection_list = []
+remove_connection_list_lock = thread.allocate_lock()
 ############ Remove info for a client ##########
 clients_info = []
 sock_client_info = {}
@@ -167,6 +169,10 @@ def remove_client(sock):
             break
 
     connection_buffer_lock.release()
+
+    remove_connection_list_lock.acquire()
+    remove_connection_list.append(sock)
+    remove_connection_list_lock.release()
 
 def clean_up_received_reqids(sock):
 
@@ -472,14 +478,21 @@ def send_to_clients_thread():
             try:
 
                 sock,data,client_reqid = tmp_reply_buffer[key]
-                #print sock
+
+                remove_connection_list_lock.acquire()
+                if (sock in remove_connection_list):
+                    clean_up_replies(None,sock)
+                    remove_connection_list_lock.release()
+                    continue
+                remove_connection_list_lock.release()
+
                 packet = construct_packet(REQ_ENCODING,data,client_reqid)
                 send_data_size = sock.send(packet)
-                print send_data_size
+                #print send_data_size
                 if (send_data_size == 0):
-                    print sock
+                    #print sock
                     clean_up_replies(None,sock)
-                    print reply_buffer
+                    #print reply_buffer
                 else:
                     clean_up_replies(key,None)
             except socket.error:
