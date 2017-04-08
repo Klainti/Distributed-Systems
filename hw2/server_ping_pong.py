@@ -12,7 +12,7 @@ setDiscoveryMulticast(multicast_ip,multicast_port)
 reqid = -1
 buf = ''
 while(1):
-    reqid, buf = getRequest(1,buf,1024)
+    reqid, buf = getRequest(1)
     if (T > 0):
         time.sleep (T)
     sendReply (reqid, str(reqid), len(str(reqid)))

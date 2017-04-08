@@ -301,11 +301,9 @@ def clean_up_replies(server_reqid,sock):
     reply_buffer_lock.acquire()
 
     if (sock != None):
-        print reply_buffer
         for key in reply_buffer.keys():
             if (sock == reply_buffer[key][0]):
                 del reply_buffer[key]
-                print reply_buffer
     elif (server_reqid != None):
         del reply_buffer[server_reqid]
 
@@ -352,8 +350,6 @@ def search_for_clients():
         client_ip, client_port, client_demand_svc, client_udp_port = receive_from_multicast(udp_socket)
         if (client_ip is None or client_port is None or client_demand_svc is None or client_udp_port is None):
             continue
-
-        print "Received multicast at", time.time() 
 
         service_buffer_lock.acquire()
         tmp_service_buffer = service_buffer
@@ -409,9 +405,6 @@ def receive_from_clients_thread():
 
             readable,_, closed  = select.select(clients, [], [],TIMEOUT)
 
-            if (len(closed) > 0):
-                print "Closed:", closed
-
             for sock in readable:
                 try:
                     packet, addr = sock.recvfrom(1024)
@@ -419,16 +412,11 @@ def receive_from_clients_thread():
                     packet = ""
 
                 if (len(packet) != 1024):
-                    print "One client off!"
-                    print "Remove_client"
+                    #print "One client off!"
                     remove_client(sock)
-                    print "clean_up_requests"
                     clean_up_requests(sock)
-                    print "clean_up_replies"
                     clean_up_replies(None,sock)
-                    print "clean_up_received_reqids"
                     clean_up_received_reqids(sock)
-                    print "Done clean up"
                 else:
                     data, reqid = deconstruct_packet(REQ_ENCODING,packet)
 
@@ -517,7 +505,7 @@ def reqid_generator():
 
 
 # Return a reqid from reqid_to_sock_buffer
-def getRequest (svcid,buf,length):
+def getRequest (svcid):
 
     tmp_tuple = get_sock_from_requests(svcid)
     while (tmp_tuple == None):

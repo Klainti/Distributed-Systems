@@ -19,6 +19,12 @@ class MissingReply(Exception):
        self.value = value
    def __str__(self):
        return repr(self.value)
+
+class NoServerFound(Exception):
+   def __init__(self, value):
+       self.value = value
+   def __str__(self):
+       return repr(self.value)
 ########################## </CUSTOM ERRORS> ##########################
 
 
@@ -61,18 +67,17 @@ reqid_svcid_lock = thread.allocate_lock()
 
 taken_reqids = []
 
-
 mtx = thread.allocate_lock()
 
-
 next_reqid = 0
-
 next_server = {}
 
+#In case getReply doesn't find the requested reqid and is blocking
 waiting_reqid = -1
 getReply_lock = thread.allocate_lock()
 getReply_lock.acquire()
 
+#Alert for the threads to close
 end_of_proccess = False
 end_of_proccess_lock = thread.allocate_lock()
 
@@ -83,7 +88,6 @@ receive_data_exit = thread.allocate_lock()
 receive_data_exit.acquire()
 
 multicast_mtx = thread.allocate_lock()
-
 ########################## </VARIABLES> ##########################
 
 
@@ -131,71 +135,6 @@ def sock_requests_add (sock, reqid):
         sock_requests[sock] = [reqid]
     sock_requests_lock.release()
 
-
-
-def check_for_unactive_sockets():
-
-    print "*****\nCheck for unactive servers"
-
-    mtx.acquire()
-
-    sock_time_lock.acquire()
-
-    for s in sock_time.keys():
-
-        if (time.clock() - sock_time[s] > 20*TIMEOUT):
-
-            print "Socket:", s, "offline"
-
-            sock_requests_lock.acquire()
-
-            for r in sock_requests[s]:
-
-                reqid_svcid_lock.acquire()
-                svcid = reqid_svcid[r]
-                reqid_svcid_lock.release()
-
-                new_requests_lock.acquire()
-
-                pos = 0
-                while (pos < len(new_requests[svcid])):
-                    if (new_requests[svcid][pos][1] == r):
-                        new_requests[svcid][pos][2] = False
-                        break
-                    pos += 1
-
-                new_requests_lock.release()
-
-            del sock_requests[s]
-
-            sock_requests_lock.release()
-
-
-            del sock_time[s]
-
-            total_sockets_lock.acquire()
-            total_sockets.remove(s)
-            total_sockets_lock.release()
-
-            sock_svcid_lock.acquire()
-            svcid = sock_svcid[s]
-            del sock_svcid[s]
-            sock_svcid_lock.release()
-
-            svcid_sock_lock.acquire()
-            svcid_sock[svcid].remove(s)
-            svcid_sock_lock.release()
-
-            s.close()
-
-    print "Check for unactive servers done\n*****"
-
-    sock_time_lock.release()
-
-    mtx.release()
-
-
-
 # Add a server to the svcid_sock
 def add_server(svcid,socket):
 
@@ -241,18 +180,20 @@ def send_multicast(svcid):
         #print 'Sending IP: %s and port: %d' % (MY_IP, tcp_port)
         packet = construct_broadcast_packet(BROADCAST_ENCODING, MY_IP, tcp_port, svcid)
         sent = udp_sock.sendto(packet, multicast_group)
-        print "Send multicast at", time.time()
 
         end_of_connections = False
 
         while(not end_of_connections):
 
             try:
+
+
                 tcp_socket.listen(1)
                 conn, addr = tcp_socket.accept()
                 conn.send('Hello')
 
-                print "Connected to", conn, time.time()
+
+                print "Connected to", conn
 
                 add_server(svcid,conn)
 
@@ -261,15 +202,14 @@ def send_multicast(svcid):
                 #print 'Connected at: %s' % str(addr)
             except socket.timeout:
                 end_of_connections = True
-                #print 'Time out, no more connections'
     except socket.error:
         pass
-
-    return connected_servers
 
     tcp_socket.close()
 
     multicast_mtx.release()
+
+    return connected_servers
 
 #Check if close has been called
 def check_for_end ():
@@ -421,8 +361,6 @@ def send_packets_for_svcid (svcid, sockets, requests):
             packet = construct_packet(REQ_ENCODING, req[0], req[1])
             try:
                 sockets[next_server[svcid]].send(packet)
-                if (req[1] == 0):
-                    print "Thread_send at", time.time()
             except socket.error:
                 continue
             #print "Time: {}".format(time.time())
@@ -455,13 +393,14 @@ def send_data():
 
         mtx.acquire()
 
+
+
         #Ready to send the new requests
         new_requests_lock.acquire()
         tmp_requests = new_requests
         new_requests_lock.release()
 
         if (len(tmp_requests) > 0):
-
 
             #For each family of service id in the requests find the servers family (tmp_list)
             for svcid in tmp_requests.keys():
@@ -527,7 +466,6 @@ def multicast_thread ():
         svcid_sock_lock.release()
 
         send_multicast (svcid)
-
 ########################## </THREADS> ##########################
 
 

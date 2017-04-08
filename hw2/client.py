@@ -4,19 +4,15 @@ import time
 
 elapsed_time = []
 
-#svcid = int (raw_input("SVCID: "))
 # 224.3.29.71
-#multicast_ip = raw_input("Give multicast IP:")
-#multicast_port = int(raw_input("Give multicast port: "))
-
+multicast_ip = raw_input("Give multicast IP: ")
+multicast_port = int(raw_input("Give multicast port: "))
 
 svcid = 1
-multicast_ip = "224.3.29.71"
-multicast_port = 10000
+#multicast_ip = "224.3.29.71"
+#multicast_port = 10000
 
 setDiscoveryMulticast(multicast_ip,multicast_port)
-
-print "Start at", time.time()
 
 for i in xrange (100):
     stime = time.time()

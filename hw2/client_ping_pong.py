@@ -15,7 +15,7 @@ multicast_port = 10000
 setDiscoveryMulticast(multicast_ip,multicast_port)
 
 sreqid = -1
-stime = time.clock()
+stime = time.time()
 error = 0
 getReply_reqid = 0
 
@@ -23,7 +23,7 @@ try:
     while (1):
 
         for i in xrange (10):
-            send_time.append (time.clock())
+            send_time.append (time.time())
             reqid = sendRequest (1, "Request nr:" + str(i) )
 
         for i in xrange (10):
@@ -32,13 +32,13 @@ try:
             if (s == "ERROR"):
                 error += 1
             getReply_reqid += 1
-            if (time.clock()-stime >= 10):
+            if (time.time()-stime >= 10):
 
-                print "Received", getReply_reqid-sreqid - 1 - error, "in time", time.clock()-stime
-                stime = time.clock()
+                print "Received", getReply_reqid-sreqid - 1 - error, "in time", time.time()-stime
+                stime = time.time()
                 sreqid = getReply_reqid
                 error = 0
-            reply_time.append (time.clock())
+            reply_time.append (time.time())
 except KeyboardInterrupt:
     close()
 '''
