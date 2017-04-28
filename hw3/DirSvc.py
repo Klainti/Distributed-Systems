@@ -1,3 +1,10 @@
+"""A service that supports group chats.
+
+Accept members and puts them in their appropriate group chat
+Also, the service notifies others members that are already in a group chat
+about joining/leaving of a member!
+"""
+
 import socket
 from packet_struct import *
 
@@ -14,27 +21,27 @@ tcp_port = tcp_socket.getsockname()[1]
 
 while (True):
 
-
-    #Wait for new connection
-    tcp_socket.listen (1)
+    # Wait for new connection
+    tcp_socket.listen(1)
     conn, addr = tcp_socket.accept()
 
-    #Wait for group chat and member info
-    packet = conn.recv ()
-    grpip, grpport, name = deconstruct_packet ()
+    # Wait for group chat and member info
+    packet = conn.recv()
+    grpip, grpport, name = deconstruct_packet()
 
-    packet = construct_member_packet (name, 1)
+    packet = construct_member_packet(name, 1)
 
     if ([grpip, grpport] not in msggroup_sockets):
-        msggroup_sockets[ [grpip, grpport] ] = [ [conn, name] ]
+        # First member init the group chat
+        msggroup_sockets[[grpip, grpport]] = [[conn, name]]
     else:
 
-        #Send to everyone that the member with name is connected
-        for member in msggroup_sockets[ [grpip, grpport] ]:
-            member[0].send (packet)
+        # Send to everyone that the member with name is connected
+        for member in msggroup_sockets[[grpip, grpport]]:
+            member[0].send(packet)
 
-        #Add member to dictionary
-        msggroup_sockets[ [grpip, grpport] ].append ([conn, name])
+        # Add member to dictionary
+        msggroup_sockets[[grpip, grpport]].append([conn, name])
 
-    #Send that it is connected to the group chat
-    conn.send (packet)
+    # Send that it is connected to the group chat
+    conn.send(packet)
