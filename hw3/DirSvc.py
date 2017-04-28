@@ -87,25 +87,35 @@ def disconections_thread ():
         current_sockets = total_sockets
         lock.release()
 
+        #Wait for disconnection message from the current connected sockets
         ready, _, _ = select.select (current_sockets, [], [], 1)
+
 
         for s in ready:
 
+            #No need to read the packet. Its always the disconnection message
             s.recv(1024)
+
 
             lock.acquire()
 
+
+            #get group_info and socket name
             group_info = socket_msggroup[s]
             name = socket_name[s]
 
+            #Construct the disconnected notification packet
             packet = construct_member_packet(name, -1)
 
+            #Send it to every member of the group
             for member in msggroup_sockets[group_info]:
                 if (member != s):
                     member.send (packet)
 
+            #At last send it to the socket which is about to leave
             s.send (packet)
 
+            #Update buffers
             msggroup_sockets[group_info].remove (s)
 
             if (msggroup_sockets[group_info] == []):
@@ -120,6 +130,7 @@ def disconections_thread ():
             print socket_msggroup
             print socket_name
 
+            #Close the socket of the disconnected member
             s.close()
 
             lock.release()
