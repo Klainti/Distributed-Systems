@@ -2,8 +2,11 @@
 
 import socket
 from packet_struct import *
+from multicast_module import *
 
+# Services variables
 service_addr = ()
+service_conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 # Set the service address
 def grp_setDir(diripaddr, dirport):
@@ -14,24 +17,35 @@ def grp_setDir(diripaddr, dirport):
 # Join a group chat.
 def grp_join(grp_ipaddr, grp_port, myid):
 
-    global service_addr
+    global service_addr, service_conn
 
-    tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    tcp_socket.connect(service_addr)
+    service_conn.connect(service_addr)
 
     request_for_grp = construct_join_packet(grp_ipaddr, grp_port, myid)
 
     # Send a request to connect
-    tcp_socket.send(request_for_grp)
+    service_conn.send(request_for_grp)
 
     # wait service to confirm the joining the group chat.
-    reply = tcp_socket.recv(1024)
+    reply = service_conn.recv(1024)
     name, state = deconstruct_packet(MEMBER_CONN_DIS_ENCODING, reply)
     name.strip('\0')
 
     if (state == 1):
         print "{} is connected!".format(name)
-        return tcp_socket
+        return socket_for_multicast(grp_ipaddr, grp_port)
     else:
         return -1
+
+# Leave a group.
+def grp_leave(gsocket):
+
+    service_conn.send("Bye!")
+
+    reply = service_conn.recv(1024)
+    name, Type = deconstruct_packet(MEMBER_CONN_DIS_ENCODING, reply)
+
+    print name, Type
+    if (Type == -1):
+        print "Disconnect successfully"
+        gsocket.close()
