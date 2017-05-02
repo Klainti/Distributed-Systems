@@ -79,6 +79,7 @@ def new_connections_thread():
 
         lock.release()
 
+        
 def disconections_thread ():
 
     while (True):
