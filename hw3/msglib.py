@@ -34,9 +34,16 @@ service_addr = ()
 recv_messages = {}
 recv_messages_lock = thread.allocate_lock()
 
+# The messages which are going to be send
+send_messages = {}
+send_messages_lock = thread.allocate_lock()
+
 # The messages received from DirSvc
 service_messages = {}
 service_messages_lock = thread.allocate_lock()
+
+# ............................. <API> ............................. #
+
 
 # Set the service address
 def grp_setDir(diripaddr, dirport):
@@ -83,6 +90,10 @@ def grp_join(grp_ipaddr, grp_port, myid):
     recv_messages[(grp_ipaddr, grp_port)] = {}
     recv_messages_lock.release()
 
+    send_messages_lock.acquire()
+    send_messages[(grp_ipaddr, grp_port)] = []
+    send_messages.release()
+
     service_messages_lock.acquire()
     service_messages[(grp_ipaddr, grp_port)] = []
     service_messages_lock.release()
@@ -92,14 +103,6 @@ def grp_join(grp_ipaddr, grp_port, myid):
     buffers_lock.release()
 
     return grp_socket
-
-
-"""
-    print "grp_info_my_name", grp_info_my_name
-    print "service_conn_grp_info", service_conn_grp_info
-    print "grp_sockets_grp_info", grp_sockets_grp_info
-    print "recv_messages", recv_messages
-"""
 
 
 # Leave a group.
@@ -124,8 +127,6 @@ def grp_leave(gsocket):
 
     # Delete and close...
 
-    # print "Going to leave from group with ip", grp_ipaddr, "and port", grp_port
-
     request_for_dis = construct_join_packet(grp_ipaddr, grp_port, my_name)
 
     service_conn.send(request_for_dis)
@@ -143,7 +144,6 @@ def grp_recv(gsocket):
     grp_ipaddr = grp_sockets_grp_info[gsocket][0]
     grp_port = grp_sockets_grp_info[gsocket][1]
     buffers_lock.release()
-
 
     # The message which is returned
     m = ""
@@ -163,10 +163,10 @@ def grp_recv(gsocket):
 
             # Then check group messages
 
-            # Tha allaksei o elegxos...prepei na elegxw an einai kai to epomeno mesa
+            # Prepei na elegxw an einai kai to epomeno mesa
 
             recv_messages_lock.acquire()
-            if (recv_messages[(grp_ipaddr, grp_port)].has_key(next_seq_number)):
+            if (next_seq_number in recv_messages[(grp_ipaddr, grp_port)]):
                 m = recv_messages[(grp_ipaddr, grp_port)][next_seq_number]
                 next_seq_number += 1
                 del recv_messages[(grp_ipaddr, grp_port)][next_seq_number]
@@ -180,6 +180,26 @@ def grp_recv(gsocket):
     return m
 
 
+# Add to send_messages the new message
+def grp_send(gsocket, message):
+
+    # Get group info
+    buffers_lock.acquire()
+    grp_ipaddr = grp_sockets_grp_info[gsocket][0]
+    grp_port = grp_sockets_grp_info[gsocket][1]
+    buffers_lock.release()
+
+    send_messages_lock.acquire()
+    send_messages[(grp_ipaddr, grp_port)].append(message)
+    send_messages_lock.release()
+
+# ............................. </API> ............................. #
+
+
+# ............................. <THREADS> ............................. #
+
+
+# The thread which receives messages from DirSvc
 def listen_from_DirSvc():
 
     global total_service_conn
@@ -230,6 +250,7 @@ def listen_from_DirSvc():
             service_messages_lock.release()
 
 
+# The thread which receives messages from multicasts
 def listen_from_multicast():
 
     global total_grp_sockets
@@ -253,8 +274,9 @@ def listen_from_multicast():
             grp_port = grp_sockets_grp_info[grp_socket][1]
             buffers_lock.release()
 
-
             # Update recv_messages
             recv_messages_lock.acquire()
             recv_messages[(grp_ipaddr, grp_port)][seq_num] = name + ": " + message
             recv_messages_lock.release()
+
+# ............................. </THREADS> ............................. #

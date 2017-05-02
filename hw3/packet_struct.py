@@ -21,9 +21,11 @@ def construct_member_packet(name, Type):
 def construct_join_packet(ip, port, name):
     return struct.pack(JOIN_ENCODING, ip, port, name)
 
+
 # Encode the packet for a new member details!
 def construct_message_packet(name, message, seq_num):
     return struct.pack(MESSAGE_ENCODING, name, message, seq_num)
+
 
 # Deconstruct a packet
 def deconstruct_packet(decode, packet):
