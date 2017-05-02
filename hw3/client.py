@@ -28,4 +28,4 @@ while (1):
         break
 """
 while (True):
-    pass
+    print grp_recv (gsocket1)

@@ -7,6 +7,7 @@
 import socket
 import thread
 import select
+import time
 from packet_struct import *
 from multicast_module import *
 
@@ -29,10 +30,13 @@ total_grp_sockets = []
 # Services variables
 service_addr = ()
 
-# The messages received from multicast or DirSvc
-messages = {}
-messages_lock = thread.allocate_lock()
+# The messages received from multicast
+recv_messages = {}
+recv_messages_lock = thread.allocate_lock()
 
+# The messages received from DirSvc
+service_messages = {}
+service_messages_lock = thread.allocate_lock()
 
 # Set the service address
 def grp_setDir(diripaddr, dirport):
@@ -55,6 +59,8 @@ def grp_join(grp_ipaddr, grp_port, myid):
     # Send a request to connect
     s.send(request_for_grp)
 
+    # GET PRIORITY QUEUE
+
     # Start the threads only the first time
     if (first_time):
         thread.start_new_thread(listen_from_DirSvc, ())
@@ -71,7 +77,15 @@ def grp_join(grp_ipaddr, grp_port, myid):
     grp_info_my_name[(grp_ipaddr, grp_port)] = myid
     service_conn_grp_info[s] = (grp_ipaddr, grp_port)
     grp_sockets_grp_info[grp_socket] = (grp_ipaddr, grp_port)
-    messages[(grp_ipaddr, grp_port)] = []
+
+    recv_messages_lock.acquire()
+    recv_messages[(grp_ipaddr, grp_port)] = {}
+    recv_messages_lock.release()
+
+    service_messages_lock.acquire()
+    service_messages[(grp_ipaddr, grp_port)] = []
+    service_messages_lock.release()
+
     total_service_conn.append(s)
 
     buffers_lock.release()
@@ -83,7 +97,7 @@ def grp_join(grp_ipaddr, grp_port, myid):
     print "grp_info_my_name", grp_info_my_name
     print "service_conn_grp_info", service_conn_grp_info
     print "grp_sockets_grp_info", grp_sockets_grp_info
-    print "messages", messages
+    print "recv_messages", recv_messages
 """
 
 
@@ -109,13 +123,54 @@ def grp_leave(gsocket):
 
     # Delete and close...
 
-    print "Going to leave from group with ip", grp_ipaddr, "and port", grp_port
+    # print "Going to leave from group with ip", grp_ipaddr, "and port", grp_port
 
     request_for_dis = construct_join_packet(grp_ipaddr, grp_port, my_name)
 
     service_conn.send(request_for_dis)
 
     gsocket.close()
+
+
+# Return the next message
+def grp_recv(gsocket):
+
+    next_seq_number = 1
+
+    buffers_lock.acquire()
+    grp_ipaddr = grp_sockets_grp_info[gsocket][0]
+    grp_port = grp_sockets_grp_info[gsocket][1]
+    buffers_lock.release()
+
+    m = ""
+
+    while (m == ""):
+
+
+        service_messages_lock.acquire()
+        if (len(service_messages[(grp_ipaddr, grp_port)]) > 0):
+            m = service_messages[(grp_ipaddr, grp_port)][0]
+            del service_messages[(grp_ipaddr, grp_port)][0]
+            service_messages_lock.release()
+            break
+        else:
+            service_messages_lock.release()
+
+            # Tha allaksei o elegxos...prepei na elegxw an einai kai to epomeno mesa
+
+            recv_messages_lock.acquire()
+            if (recv_messages[(grp_ipaddr, grp_port)].has_key(next_seq_number)):
+                m = recv_messages[(grp_ipaddr, grp_port)][next_seq_number]
+                next_seq_number += 1
+                del recv_messages[(grp_ipaddr, grp_port)][next_seq_number]
+                recv_messages_lock.release()
+                break
+
+            recv_messages_lock.release()
+
+        time.sleep(0.05)
+
+    return m
 
 
 def listen_from_DirSvc():
@@ -142,26 +197,25 @@ def listen_from_DirSvc():
             grp_ipaddr = service_conn_grp_info[service_conn][0]
             grp_port = service_conn_grp_info[service_conn][1]
 
-            print "Received message for DirSvc"
+            # print "Received message for DirSvc"
 
-            messages_lock.acquire()
+            service_messages_lock.acquire()
 
             # Add the new message to the queue
 
             if (state == 1):
-                messages[(grp_ipaddr, grp_port)].append(name + " is connected")
+                service_messages[(grp_ipaddr, grp_port)].append(name + " is connected")
             elif (state == -1):
-                # Break if it is ack for your exit
                 if (name == grp_info_my_name[(grp_ipaddr, grp_port)]):
-                    messages[(grp_ipaddr, grp_port)].append("Disconnected from group chat successfully")
+                    service_messages[(grp_ipaddr, grp_port)].append("Disconnected from group chat successfully")
                     service_conn.close()
                     # Delete...
 
-                messages[(grp_ipaddr, grp_port)].append(name + " is disconnected")
+                service_messages[(grp_ipaddr, grp_port)].append(name + " is disconnected")
 
-            print messages
+            # print "service_messages", service_messages
 
-            messages_lock.release()
+            service_messages_lock.release()
 
 
 def listen_from_multicast():
