@@ -14,7 +14,7 @@ def socket_to_OS_multicast_group(sock, multi_ip):
 
 # Creates a socket to listen from multicast
 def socket_for_multicast(multi_ip, multi_port):
-    server_address = ('', multi_port)
+    server_address = (multi_ip, multi_port)
 
     # Create the UDP socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

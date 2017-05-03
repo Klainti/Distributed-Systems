@@ -20,12 +20,17 @@ buffers_lock = thread.allocate_lock()
 grp_info_my_name = {}
 # The group info (ip, port) for every grp_socket
 grp_sockets_grp_info = {}
+# The group socket for every group
+grp_info_grp_sockets = {}
 # The group info (ip, port) for every service_socket
 service_conn_grp_info = {}
 # All service connections and all multicast connections
 total_service_conn = []
 total_grp_sockets = []
 
+last_received_seq_number = {}
+
+next_seq_number = {}
 
 # Services variables
 service_addr = ()
@@ -72,6 +77,7 @@ def grp_join(grp_ipaddr, grp_port, myid):
     if (first_time):
         thread.start_new_thread(listen_from_DirSvc, ())
         thread.start_new_thread(listen_from_multicast, ())
+        thread.start_new_thread(send_to_multicast, ())
         first_time = False
 
     # Try till you get a valid socket
@@ -85,6 +91,12 @@ def grp_join(grp_ipaddr, grp_port, myid):
     grp_info_my_name[(grp_ipaddr, grp_port)] = myid
     service_conn_grp_info[s] = (grp_ipaddr, grp_port)
     grp_sockets_grp_info[grp_socket] = (grp_ipaddr, grp_port)
+    grp_info_grp_sockets[(grp_ipaddr, grp_port)] = grp_socket
+    last_received_seq_number[(grp_ipaddr, grp_port)] = 0
+    next_seq_number[(grp_ipaddr, grp_port)] = 1
+
+    total_service_conn.append(s)
+    total_grp_sockets.append(grp_socket)
 
     recv_messages_lock.acquire()
     recv_messages[(grp_ipaddr, grp_port)] = {}
@@ -98,7 +110,7 @@ def grp_join(grp_ipaddr, grp_port, myid):
     service_messages[(grp_ipaddr, grp_port)] = []
     service_messages_lock.release()
 
-    total_service_conn.append(s)
+
 
     buffers_lock.release()
 
@@ -137,7 +149,6 @@ def grp_leave(gsocket):
 # Return the next message
 def grp_recv(gsocket):
 
-    next_seq_number = 1
 
     # Get group info
     buffers_lock.acquire()
@@ -166,10 +177,10 @@ def grp_recv(gsocket):
             # Prepei na elegxw an einai kai to epomeno mesa
 
             recv_messages_lock.acquire()
-            if (next_seq_number in recv_messages[(grp_ipaddr, grp_port)]):
-                m = recv_messages[(grp_ipaddr, grp_port)][next_seq_number]
-                next_seq_number += 1
-                del recv_messages[(grp_ipaddr, grp_port)][next_seq_number]
+            if (next_seq_number[(grp_ipaddr, grp_port)] in recv_messages[(grp_ipaddr, grp_port)]):
+                m = recv_messages[(grp_ipaddr, grp_port)][next_seq_number[(grp_ipaddr, grp_port)]]
+                next_seq_number[(grp_ipaddr, grp_port)] += 1
+                # del recv_messages[(grp_ipaddr, grp_port)][next_seq_number]
                 recv_messages_lock.release()
                 break
 
@@ -265,18 +276,63 @@ def listen_from_multicast():
 
         for grp_socket in ready:
 
+            print grp_socket ,"is ready"
+
             packet, addr = grp_socket.recvfrom(1024)
             name, message, seq_num = deconstruct_packet(MESSAGE_ENCODING, packet)
 
-            # Get group info
+            name = name.strip('\0')
+            message = message.strip('\0')
+
             buffers_lock.acquire()
+
+            # Get group info
             grp_ipaddr = grp_sockets_grp_info[grp_socket][0]
             grp_port = grp_sockets_grp_info[grp_socket][1]
+            # Update sequence number
+            last_received_seq_number[(grp_ipaddr, grp_port)] = max(last_received_seq_number[(grp_ipaddr, grp_port)], seq_num)
+
+
             buffers_lock.release()
 
             # Update recv_messages
             recv_messages_lock.acquire()
             recv_messages[(grp_ipaddr, grp_port)][seq_num] = name + ": " + message
+            print "Got message", recv_messages
             recv_messages_lock.release()
+
+
+# The thread which sends the messages to the mmulticasts
+def send_to_multicast():
+
+    while (True):
+
+        send_messages_lock.acquire()
+
+        # For each group
+        for grp_pair in send_messages.keys():
+
+            buffers_lock.acquire()
+            grp_socket = grp_info_grp_sockets[grp_pair]
+            name = grp_info_my_name[grp_pair]
+            buffers_lock.release()
+
+            # Send all the messages and delete them !!!!!(tha allaksei)
+            for i in xrange(len(send_messages[grp_pair])):
+
+                buffers_lock.acquire()
+                last_received_seq_number[grp_pair] += 1
+                packet = construct_message_packet(name, send_messages[grp_pair][i], last_received_seq_number[grp_pair])
+                buffers_lock.release()
+
+                print "Send message to", grp_pair
+
+                grp_socket.sendto(packet, grp_pair)
+
+            send_messages[grp_pair] = []
+
+        send_messages_lock.release()
+
+        time.sleep(0.05)
 
 # ............................. </THREADS> ............................. #
