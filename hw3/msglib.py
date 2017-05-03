@@ -92,7 +92,7 @@ def grp_join(grp_ipaddr, grp_port, myid):
 
     send_messages_lock.acquire()
     send_messages[(grp_ipaddr, grp_port)] = []
-    send_messages.release()
+    send_messages_lock.release()
 
     service_messages_lock.acquire()
     service_messages[(grp_ipaddr, grp_port)] = []
