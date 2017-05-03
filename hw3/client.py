@@ -15,7 +15,7 @@ def add_new_grp():
     grp_port = int(raw_input("Give grp port: "))
     nickname = raw_input("Give nickname: ")
 
-    return grp_join(grp_ip, grp_port, nickname)
+    return [grp_join(grp_ip, grp_port, nickname), grp_ip, grp_port, nickname]
 
 
 def Enter_pressed(event, input_widget):
@@ -32,12 +32,12 @@ def Enter_pressed(event, input_widget):
     sending_dict_lock.release()
 
 
-def create_window_chat():
+def create_window_chat(grp_ipaddr, grp_port, name):
 
     global root
 
     new_window = tk.Toplevel(root)
-    new_window.title("Chat")
+    new_window.title("(ip: " + str(grp_ipaddr) + "), (port: " + str(grp_port) + "), (name: " + str(name) + ")")
 
     # Text Widget
     output_widget = tk.Text(new_window)
@@ -71,11 +71,11 @@ def receive_worker(gsocket, output_widget):
     while(1):
 
         msg = grp_recv(gsocket)
-        output_widget.insert(tk.END, msg)
+        output_widget.insert(tk.END, msg + "\n")
 
-def chat_worker(gsocket):
+def chat_worker(gsocket, grp_ipaddr, grp_port, name):
 
-    input_widget, output_widget = create_window_chat()
+    input_widget, output_widget = create_window_chat(grp_ipaddr, grp_port, name)
 
     t_worker = threading.Thread(target=send_worker, args=(gsocket, input_widget)).start()
     t_receiver = threading.Thread(target=receive_worker, args=(gsocket, output_widget)).start()
@@ -87,13 +87,13 @@ def main_thread():
         join_or_leave = int(raw_input("Join or leave a group (0/1): "))
 
         if (join_or_leave == 0):
-            gsocket = add_new_grp()
-            t = threading.Thread(target=chat_worker, args=(gsocket,))
+            gsocket, grp_ipaddr, grp_port, name = add_new_grp()
+            t = threading.Thread(target=chat_worker, args=(gsocket, grp_ipaddr, grp_port, name))
             t.start()
 
 
 def main():
-    
+
     global root
 
     service_ip = raw_input("Give service IP: ")
