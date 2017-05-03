@@ -218,7 +218,7 @@ def listen_from_DirSvc():
             packet = service_conn.recv(1024)
             name, state = deconstruct_packet(MEMBER_CONN_DIS_ENCODING, packet)
 
-            name.strip('\0')
+            name = name.strip('\0')
 
             # Find group info from service_conn_grp_info
             buffers_lock.acquire()
