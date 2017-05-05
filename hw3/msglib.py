@@ -178,13 +178,15 @@ def grp_recv(gsocket):
 
     # The message which is returned
     m = ""
+    t = 0
 
     while (m == ""):
 
         # First check service_messages
         service_messages_lock.acquire()
         if (len(service_messages[(grp_ipaddr, grp_port)]) > 0):
-            m = service_messages[(grp_ipaddr, grp_port)][0]
+            m = service_messages[(grp_ipaddr, grp_port)][0][0]
+            t = service_messages[(grp_ipaddr, grp_port)][0][1]
             del service_messages[(grp_ipaddr, grp_port)][0]
             service_messages_lock.release()
             break
@@ -199,6 +201,7 @@ def grp_recv(gsocket):
             recv_messages_lock.acquire()
             if (next_seq_number[(grp_ipaddr, grp_port)] in recv_messages[(grp_ipaddr, grp_port)]):
                 m = recv_messages[(grp_ipaddr, grp_port)][next_seq_number[(grp_ipaddr, grp_port)]]
+                t = 0
                 next_seq_number[(grp_ipaddr, grp_port)] += 1
                 # del recv_messages[(grp_ipaddr, grp_port)][next_seq_number]
                 recv_messages_lock.release()
@@ -208,7 +211,7 @@ def grp_recv(gsocket):
 
         time.sleep(0.05)
 
-    return m
+    return m, t
 
 
 # Add to send_messages the new message
@@ -263,7 +266,7 @@ def listen_from_DirSvc():
             service_messages_lock.acquire()
 
             if (state == 1):
-                service_messages[(grp_ipaddr, grp_port)].append(name + " is connected")
+                service_messages[(grp_ipaddr, grp_port)].append([name + " is connected", 1])
 
                 buffers_lock.acquire()
                 grp_info_members[(grp_ipaddr, grp_port)].append(name)
@@ -277,13 +280,13 @@ def listen_from_DirSvc():
                 print grp_info_members
 
                 if (name == grp_info_my_name[(grp_ipaddr, grp_port)]):
-                    service_messages[(grp_ipaddr, grp_port)].append("Disconnected from group chat successfully")
+                    service_messages[(grp_ipaddr, grp_port)].append(["Disconnected from group chat successfully", -2])
                     service_conn.close()
                     # Delete...
 
                 buffers_lock.release()
 
-                service_messages[(grp_ipaddr, grp_port)].append(name + " is disconnected")
+                service_messages[(grp_ipaddr, grp_port)].append([name + " is disconnected", -1])
 
             # print "service_messages", service_messages
 

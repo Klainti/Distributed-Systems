@@ -69,14 +69,15 @@ def new_connections_thread():
             group_members[(grpip, grpport)] = [name]
 
             previous_members_packet = construct_prev_member_packet(name)
-            conn.send (previous_members_packet)
+            conn.send(previous_members_packet)
+
         else:
             group_members[(grpip, grpport)].append(name)
 
             # Send to the new member the already connected members
             for n in group_members[(grpip, grpport)]:
                 previous_members_packet = construct_prev_member_packet(n)
-                conn.send (previous_members_packet)
+                conn.send(previous_members_packet)
 
             # Send to everyone that the member with name is connected
             for member in msggroup_sockets[(grpip, grpport)]:

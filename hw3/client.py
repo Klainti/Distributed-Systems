@@ -5,6 +5,13 @@ import threading
 from packet_struct import *
 from msglib import *
 
+# MESSAGE TYPES
+MESSAGE = 0
+ANOTHER_MEMBER_DISCONNECTED = -1
+I_DISCONNECTED = -2
+SOMEONE_IS_CONNECTED = 1
+
+
 root = None
 sending_dict = {}
 sending_dict_lock = threading.Lock()
@@ -15,6 +22,7 @@ gsocket_to_group = {}
 # variables for every gsocket
 gsocket_variables = {}
 gsocket_variables_lock = threading.Lock()
+
 
 # Join to a group
 def add_new_grp():
@@ -59,6 +67,7 @@ def create_window_chat(grp_ipaddr, grp_port, name):
 
     return (input_widget, output_widget, new_window)
 
+
 def send_worker(gsocket, input_widget):
 
     global sending_dict
@@ -74,7 +83,6 @@ def send_worker(gsocket, input_widget):
             break
         gsocket_variables_lock.release()
 
-
         sending_dict_lock.acquire()
         if (input_widget in sending_dict.keys()):
             if (sending_dict[input_widget] is not []):
@@ -84,11 +92,12 @@ def send_worker(gsocket, input_widget):
                 sending_dict[input_widget] = []
         sending_dict_lock.release()
 
+
 def receive_worker(gsocket, output_widget, window_object):
 
     while(1):
 
-        msg = grp_recv(gsocket)
+        msg, msg_type = grp_recv(gsocket)
         output_widget.insert(tk.END, msg + "\n")
 
         # edw tha allaxi to ti mnm epistrefi! Einai mnm h bgainw apo group chat!
@@ -98,12 +107,14 @@ def receive_worker(gsocket, output_widget, window_object):
             print 'Receiver done'
             break
 
+
 def chat_worker(gsocket, grp_ipaddr, grp_port, name):
 
     input_widget, output_widget, window_object = create_window_chat(grp_ipaddr, grp_port, name)
 
     t_worker = threading.Thread(target=send_worker, args=(gsocket, input_widget)).start()
     t_receiver = threading.Thread(target=receive_worker, args=(gsocket, output_widget, window_object)).start()
+
 
 def main_thread():
 
@@ -124,7 +135,7 @@ def main_thread():
             t = threading.Thread(target=chat_worker, args=(gsocket, grp_ipaddr, grp_port, name))
             t.start()
         else:
-    
+
             group_exit_ipaddr = raw_input("Give group ipaddr: ")
             group_exit_port = int(raw_input("Give group port: "))
             if ((group_exit_ipaddr, group_exit_port) in gsocket_to_group.keys()):
@@ -138,8 +149,6 @@ def main_thread():
                 grp_leave(gsocket)
             else:
                 print "Unknown group. Please try again!"
-            
-
 
 
 def main():
@@ -159,6 +168,7 @@ def main():
     t = threading.Thread(target=main_thread)
     t.start()
     root.mainloop()
+
 
 if __name__ == "__main__" :
     main()
