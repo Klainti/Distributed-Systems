@@ -9,9 +9,8 @@ about joining/leaving of a member!
 import thread
 import select
 import socket
+import os
 from packet_struct import *
-
-MY_IP = "127.0.0.1"
 
 lock = thread.allocate_lock()
 
@@ -30,6 +29,14 @@ socket_name = {}
 def new_connections_thread():
 
     tcp_port = 0
+    
+    s1 = os.popen('/sbin/ifconfig wlan0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
+    s2 = os.popen('/sbin/ifconfig eth0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
+    if (len(s1) > 16 or len(s1) < 7):
+        MY_IP = s2.strip('\n')
+    else:
+        MY_IP = s1.strip('\n')
+
     tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     tcp_socket.bind((MY_IP, tcp_port))
     tcp_port = tcp_socket.getsockname()[1]
