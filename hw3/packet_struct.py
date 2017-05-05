@@ -2,14 +2,17 @@
 
 import struct
 
+MAX_NAME_LEGNTH = '150'
+MAX_MSG_LEGTH = '870'
+
 # Group IP, Group port, Name
-JOIN_ENCODING = '!16si50s'
+JOIN_ENCODING = '!16si'+MAX_NAME_LEGNTH+'s'
 
 # Name, Type (-1/ 1)
-MEMBER_CONN_DIS_ENCODING = '!50si'
+MEMBER_CONN_DIS_ENCODING = '!'+MAX_NAME_LEGNTH+'si'
 
 # Name, Message, Sequence number
-MESSAGE_ENCODING = '!150s870si'
+MESSAGE_ENCODING = '!'+MAX_NAME_LEGNTH+'s'+MAX_MSG_LEGTH+'si'
 
 
 # Encode the packet to announce new member
