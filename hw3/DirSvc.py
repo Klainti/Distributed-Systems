@@ -14,22 +14,25 @@ from packet_struct import *
 
 lock = thread.allocate_lock()
 
-#Connected sockets for every group
+# Connected sockets for every group
 msggroup_sockets = {}
 
-#All the connected sockets
+# All the connected sockets
 total_sockets = []
 
-#The group every socket belongs to
+# The group every socket belongs to
 socket_msggroup = {}
 
-#The name of every socket
+# The name of every socket
 socket_name = {}
+
+group_members = {}
+
 
 def new_connections_thread():
 
     tcp_port = 0
-    
+
     s1 = os.popen('/sbin/ifconfig wlan0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
     s2 = os.popen('/sbin/ifconfig eth0 | grep "inet\ addr" | cut -d: -f2 | cut -d" " -f1').read()
     if (len(s1) > 16 or len(s1) < 7):
@@ -63,7 +66,18 @@ def new_connections_thread():
         if ((grpip, grpport) not in msggroup_sockets):
             # First member init the group chat
             msggroup_sockets[(grpip, grpport)] = [conn]
+            group_members[(grpip, grpport)] = [name]
+
+            previous_members_packet = construct_prev_member_packet(name)
+            conn.send (previous_members_packet)
         else:
+            group_members[(grpip, grpport)].append(name)
+
+            # Send to the new member the already connected members
+            for n in group_members[(grpip, grpport)]:
+                previous_members_packet = construct_prev_member_packet(n)
+                conn.send (previous_members_packet)
+
             # Send to everyone that the member with name is connected
             for member in msggroup_sockets[(grpip, grpport)]:
                 member.send(new_member_packet)
@@ -74,8 +88,8 @@ def new_connections_thread():
         # Send that it is connected to the group chat
         conn.send(new_member_packet)
 
-        #Update total sockets and socket_msggroup
-        total_sockets.append (conn)
+        # Update total sockets and socket_msggroup
+        total_sockets.append(conn)
         socket_msggroup[conn] = (grpip, grpport)
         socket_name[conn] = name
 
@@ -86,8 +100,8 @@ def new_connections_thread():
 
         lock.release()
 
-        
-def disconections_thread ():
+
+def disconections_thread():
 
     while (True):
 
@@ -95,41 +109,41 @@ def disconections_thread ():
         current_sockets = total_sockets
         lock.release()
 
-        #Wait for disconnection message from the current connected sockets
-        ready, _, _ = select.select (current_sockets, [], [], 1)
+        # Wait for disconnection message from the current connected sockets
+        ready, _, _ = select.select(current_sockets, [], [], 1)
 
 
         for s in ready:
 
-            #No need to read the packet. Its always the disconnection message
+            # No need to read the packet. Its always the disconnection message
             s.recv(1024)
 
 
             lock.acquire()
 
 
-            #get group_info and socket name
+            # group_info and socket name
             group_info = socket_msggroup[s]
             name = socket_name[s]
 
-            #Construct the disconnected notification packet
+            # Construct the disconnected notification packet
             packet = construct_member_packet(name, -1)
 
-            #Send it to every member of the group
+            # Send it to every member of the group
             for member in msggroup_sockets[group_info]:
                 if (member != s):
-                    member.send (packet)
+                    member.send(packet)
 
-            #At last send it to the socket which is about to leave
-            s.send (packet)
+            # At last send it to the socket which is about to leave
+            s.send(packet)
 
-            #Update buffers
-            msggroup_sockets[group_info].remove (s)
+            # Update buffers
+            msggroup_sockets[group_info].remove(s)
 
             if (msggroup_sockets[group_info] == []):
                 del msggroup_sockets[group_info]
 
-            total_sockets.remove (s)
+            total_sockets.remove(s)
             del socket_msggroup[s]
             del socket_name[s]
 
@@ -138,14 +152,14 @@ def disconections_thread ():
             print socket_msggroup
             print socket_name
 
-            #Close the socket of the disconnected member
+            # Close the socket of the disconnected member
             s.close()
 
             lock.release()
 
 
-thread.start_new_thread (new_connections_thread, ())
-thread.start_new_thread (disconections_thread, ())
+thread.start_new_thread(new_connections_thread, ())
+thread.start_new_thread(disconections_thread, ())
 
 while (True):
     pass

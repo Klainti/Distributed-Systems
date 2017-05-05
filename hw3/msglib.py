@@ -27,6 +27,8 @@ service_conn_grp_info = {}
 # All service connections and all multicast connections
 total_service_conn = []
 total_grp_sockets = []
+# The members of each group
+grp_info_members = {}
 
 last_received_seq_number = {}
 
@@ -71,7 +73,25 @@ def grp_join(grp_ipaddr, grp_port, myid):
     # Send a request to connect
     s.send(request_for_grp)
 
-    # GET PRIORITY QUEUE ######################################
+    buffers_lock.acquire()
+
+    grp_info_members[(grp_ipaddr, grp_port)] = []
+
+    while (True):
+
+        packet = s.recv(1024)
+
+        name = deconstruct_packet(PREVIOUS_MEMBERS_ENCODING, packet)[0]
+        name = name.strip('\0')
+
+        if (name == myid):
+            break
+
+        grp_info_members[(grp_ipaddr, grp_port)].append(name)
+
+    print "Already connected members: ", grp_info_members
+
+    buffers_lock.release()
 
     # Start the threads only the first time
     if (first_time):
@@ -244,8 +264,17 @@ def listen_from_DirSvc():
 
             if (state == 1):
                 service_messages[(grp_ipaddr, grp_port)].append(name + " is connected")
+
+                buffers_lock.acquire()
+                grp_info_members[(grp_ipaddr, grp_port)].append(name)
+                print grp_info_members
+                buffers_lock.release()
+
             elif (state == -1):
                 buffers_lock.acquire()
+
+                grp_info_members[(grp_ipaddr, grp_port)].remove(name)
+                print grp_info_members
 
                 if (name == grp_info_my_name[(grp_ipaddr, grp_port)]):
                     service_messages[(grp_ipaddr, grp_port)].append("Disconnected from group chat successfully")
