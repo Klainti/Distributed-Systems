@@ -112,8 +112,6 @@ def grp_join(grp_ipaddr, grp_port, myid):
         name = deconstruct_packet(PREVIOUS_MEMBERS_ENCODING, packet)[0]
         name = name.strip('\0')
 
-
-
         if (name == myid):
             break
 
@@ -166,8 +164,6 @@ def grp_join(grp_ipaddr, grp_port, myid):
     service_messages[grp_pair] = []
     service_messages_lock.release()
 
-
-
     buffers_lock.release()
 
     return grp_socket
@@ -205,7 +201,6 @@ def grp_leave(gsocket):
 # Return the next message
 def grp_recv(gsocket):
 
-
     # Get group info
     buffers_lock.acquire()
     grp_ipaddr = grp_sockets_grp_info[gsocket][0]
@@ -240,7 +235,7 @@ def grp_recv(gsocket):
             # First check if we received a message with seq_number == last_read_number
             if (last_read_number[grp_pair] in recv_messages[grp_pair]):
                 # Then check if this message is valid (we have only one message for this seq number with True)
-                if (len (recv_messages[grp_pair][last_read_number[grp_pair]]) == 1 and recv_messages[grp_pair][last_read_number[grp_pair]][0][2] == True):
+                if (len(recv_messages[grp_pair][last_read_number[grp_pair]]) == 1 and recv_messages[grp_pair][last_read_number[grp_pair]][0][2] == True):
 
                     m = recv_messages[grp_pair][last_read_number[grp_pair]][0][0] + ": " + recv_messages[grp_pair][last_read_number[grp_pair]][0][1]
                     # All messages are type 0
@@ -272,6 +267,7 @@ def grp_send(gsocket, message):
 
     send_messages_lock.acquire()
     send_messages[grp_pair].append([message, -1, -1, False])
+    print "Send messages", send_messages
     send_messages_lock.release()
 
 # ............................. </API> ............................. #
@@ -317,7 +313,6 @@ def listen_from_DirSvc():
 
                 buffers_lock.acquire()
                 grp_info_members[(grp_ipaddr, grp_port)].append(name)
-                print grp_info_members
                 buffers_lock.release()
 
             elif (state == -1):
@@ -359,7 +354,7 @@ def listen_from_multicast():
             if (len(packet) == 154):
                 # Received ACK for a message from the coordinator
 
-                name, seq_num = deconstruct_packet (VALID_MESSAGE, packet)
+                name, seq_num = deconstruct_packet(VALID_MESSAGE, packet)
                 name = name.strip('\0')
 
                 print "Received ACK for ", seq_num
@@ -377,7 +372,7 @@ def listen_from_multicast():
                 if (grp_info_my_name[grp_pair] == name):
                     send_messages_lock.acquire()
 
-                    for i in xrange (len(send_messages[grp_pair])):
+                    for i in xrange(len(send_messages[grp_pair])):
                         if (send_messages[grp_pair][i][1] == seq_num):
                             send_messages[grp_pair][i][3] = True
                             break
@@ -410,10 +405,11 @@ def listen_from_multicast():
                     pass
                     # Send request for the packet
 
-
             elif (len(packet) == 1024):
                 # Received a new message
                 name, message, seq_num = deconstruct_packet(MESSAGE_ENCODING, packet)
+
+                print "Received", message, "from", name, "with seq_num", seq_num
 
                 name = name.strip('\0')
                 message = message.strip('\0')
@@ -425,7 +421,6 @@ def listen_from_multicast():
                 grp_port = grp_sockets_grp_info[grp_socket][1]
                 grp_pair = (grp_ipaddr, grp_port)
 
-
                 # 1.    Check if is the coordinator
                 # 2.    If the coordinator then check
                 #       if the seq_num is the last_acked_seq_num + 1 then
@@ -433,12 +428,12 @@ def listen_from_multicast():
                 # 4.    Update last_acked_seq_number
                 if (grp_info_coordinator[grp_pair]):
 
-                    if (last_acked_seq_number + 1 == seq_num):
+                    if (last_acked_seq_number[grp_pair] + 1 == seq_num):
 
                         grp_info_valid_messages[grp_pair][seq_num] = name
 
-                        valid_message_packet = construct_valid_message_packet (name, seq_num)
-                        grp_socket.sendto (valid_message_packet, grp_pair)
+                        valid_message_packet = construct_valid_message_packet(name, seq_num)
+                        grp_socket.sendto(valid_message_packet, grp_pair)
 
                         # Update sequence number
                         last_acked_seq_number[grp_pair] = seq_num
@@ -448,7 +443,7 @@ def listen_from_multicast():
                 # Update recv_messages
                 recv_messages_lock.acquire()
 
-                #Edw prepei na elegxw an einai to paketo apo dikou request epeidh to exasa giati tote mpainei True
+                # Edw prepei na elegxw an einai to paketo apo dikou request epeidh to exasa giati tote mpainei True
 
                 if (seq_num in recv_messages[(grp_ipaddr, grp_port)]):
                     recv_messages[(grp_ipaddr, grp_port)][seq_num].append([name, message, False])
@@ -473,19 +468,21 @@ def send_to_multicast():
             name = grp_info_my_name[grp_pair]
             buffers_lock.release()
 
-            # Send all the messages (tha allaksei)
+            # Send the first False message
             for i in xrange(len(send_messages[grp_pair])):
 
                 if (send_messages[grp_pair][i][3] == False and time.time() - send_messages[grp_pair][i][2] > TIMEOUT):
 
-                    send_messages[grp_pair][i][1] = last_valid_number[grp_pair] + i
+                    send_messages[grp_pair][i][1] = last_valid_number[grp_pair] + 1
                     send_messages[grp_pair][i][2] = time.time()
 
                     buffers_lock.acquire()
-                    packet = construct_message_packet(name, send_messages[grp_pair][i][0], last_valid_number[grp_pair] + i)
+                    packet = construct_message_packet(name, send_messages[grp_pair][i][0], last_valid_number[grp_pair] + 1)
                     buffers_lock.release()
 
                     grp_socket.sendto(packet, grp_pair)
+
+                    break
 
         send_messages_lock.release()
 

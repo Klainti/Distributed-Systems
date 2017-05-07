@@ -98,6 +98,7 @@ def receive_worker(gsocket, output_widget, window_object):
     while(1):
 
         msg, msg_type = grp_recv(gsocket)
+        msg = msg.strip('\n')
         output_widget.insert(tk.END, msg + "\n")
 
         # edw tha allaxi to ti mnm epistrefi! Einai mnm h bgainw apo group chat!
