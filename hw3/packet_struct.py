@@ -17,6 +17,8 @@ MESSAGE_ENCODING = '!' + MAX_NAME_LEGNTH + 's' + MAX_MSG_LEGTH + 'si'
 # Name
 PREVIOUS_MEMBERS_ENCODING = '!' + MAX_NAME_LEGNTH + 's'
 
+# Name, seq_num
+VALID_MESSAGE = '!' + MAX_NAME_LEGNTH + 'si'
 
 # Encode the packet for the already coonected members
 def construct_prev_member_packet(name):
@@ -36,6 +38,11 @@ def construct_join_packet(ip, port, name):
 # Encode the packet for a new member details!
 def construct_message_packet(name, message, seq_num):
     return struct.pack(MESSAGE_ENCODING, name, message, seq_num)
+
+
+# Encode the packet for the valid message
+def construct_valid_message_packet(name, seq_num):
+    return struct.pack(VALID_MESSAGE, name, seq_num)
 
 
 # Deconstruct a packet
