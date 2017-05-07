@@ -109,6 +109,8 @@ def grp_join(grp_ipaddr, grp_port, myid):
 
         packet = s.recv(1024)
 
+        print "Got", packet, len(packet)
+
         name = deconstruct_packet(PREVIOUS_MEMBERS_ENCODING, packet)[0]
         name = name.strip('\0')
 
@@ -468,19 +470,21 @@ def send_to_multicast():
             name = grp_info_my_name[grp_pair]
             buffers_lock.release()
 
-            # Send the first False message
+            # Send only the first False message
             for i in xrange(len(send_messages[grp_pair])):
 
-                if (send_messages[grp_pair][i][3] == False and time.time() - send_messages[grp_pair][i][2] > TIMEOUT):
+                if (send_messages[grp_pair][i][3] == False):
 
-                    send_messages[grp_pair][i][1] = last_valid_number[grp_pair] + 1
-                    send_messages[grp_pair][i][2] = time.time()
+                    if(time.time() - send_messages[grp_pair][i][2] > TIMEOUT):
 
-                    buffers_lock.acquire()
-                    packet = construct_message_packet(name, send_messages[grp_pair][i][0], last_valid_number[grp_pair] + 1)
-                    buffers_lock.release()
+                        send_messages[grp_pair][i][1] = last_valid_number[grp_pair] + 1
+                        send_messages[grp_pair][i][2] = time.time()
 
-                    grp_socket.sendto(packet, grp_pair)
+                        buffers_lock.acquire()
+                        packet = construct_message_packet(name, send_messages[grp_pair][i][0], last_valid_number[grp_pair] + 1)
+                        buffers_lock.release()
+
+                        grp_socket.sendto(packet, grp_pair)
 
                     break
 
