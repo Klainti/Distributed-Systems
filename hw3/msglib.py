@@ -1,7 +1,9 @@
-""" API for join/leave a group.Also send/receive msg from group chat.
-    When join is called we create two threads. One listening to DIrSvc
-    and one listening to multicast.
+"""
+    API for join/leave a group.
 
+    Also send/receive msg from group chat.
+    When join is called we create three threads. One listening to DIrSvc,
+    one listening to multicast and one sendind to multicast.
 """
 
 import socket
@@ -11,15 +13,26 @@ import time
 from packet_struct import *
 from multicast_module import *
 
+# ............................. <Variables> ............................. #
+
+# Time to retransmit the message if not received ACK
+TIMEOUT = 0.5
+
 first_time = True
 
-
+# A lock for all the buffers
 buffers_lock = thread.allocate_lock()
+
+# ........................ <Coordinator buffers> ........................ #
 
 # True or False if is the coordinator for each group
 grp_info_coordinator = {}
 # Only for the coordinator (the sender of the valid message for each seq_num)
 grp_info_valid_messages = {}
+# Biggest sequence number which has been ACKed
+last_acked_seq_number = {}
+
+# ........................ </Coordinator buffers> ........................ #
 
 # The name the client has in each group chat
 grp_info_my_name = {}
@@ -32,9 +45,11 @@ service_conn_grp_info = {}
 # The members of each group
 grp_info_members = {}
 
-last_received_seq_number = {}
-# Last seq_number for which we got ack from the coordinator
+# Last seq_num for which we got ACK
 last_valid_number = {}
+# Last seq_number the app got
+last_read_number = {}
+
 # All service connections and all multicast connections
 total_service_conn = []
 total_grp_sockets = []
@@ -48,11 +63,14 @@ recv_messages_lock = thread.allocate_lock()
 
 # The messages which are going to be send
 send_messages = {}
+# [Message, Seq_num with which was send, time.time() when send, ACKed(T/F)]
 send_messages_lock = thread.allocate_lock()
 
 # The messages received from DirSvc
 service_messages = {}
 service_messages_lock = thread.allocate_lock()
+
+# ............................. </Variables> ............................. #
 
 # ............................. <API> ............................. #
 
@@ -69,6 +87,8 @@ def grp_join(grp_ipaddr, grp_port, myid):
 
     global service_addr, service_conn, my_name, grp_socket, first_time
 
+    grp_pair = (grp_ipaddr, grp_port)
+
     #####################################
     s = socket.socket()
     s.connect(service_addr)
@@ -79,11 +99,11 @@ def grp_join(grp_ipaddr, grp_port, myid):
 
     buffers_lock.acquire()
 
-    grp_info_coordinator[(grp_ipaddr, grp_port)] = False
-    grp_info_valid_messages[(grp_ipaddr, grp_port)] = {}
+    grp_info_coordinator[grp_pair] = False
+    grp_info_valid_messages[grp_pair] = {}
 
     # Create a list with the already connected users
-    grp_info_members[(grp_ipaddr, grp_port)] = []
+    grp_info_members[grp_pair] = []
 
     while (True):
 
@@ -97,11 +117,11 @@ def grp_join(grp_ipaddr, grp_port, myid):
         if (name == myid):
             break
 
-        grp_info_members[(grp_ipaddr, grp_port)].append(name)
+        grp_info_members[grp_pair].append(name)
 
     # If no one before -> he is the coordinator
-    if (grp_info_members[(grp_ipaddr, grp_port)] == []):
-        grp_info_coordinator[(grp_ipaddr, grp_port)] = True
+    if (grp_info_members[grp_pair] == []):
+        grp_info_coordinator[grp_pair] = True
 
     buffers_lock.release()
 
@@ -120,29 +140,30 @@ def grp_join(grp_ipaddr, grp_port, myid):
     buffers_lock.acquire()
 
     # Update buffers
-    grp_info_my_name[(grp_ipaddr, grp_port)] = myid
+    grp_info_my_name[grp_pair] = myid
 
-    service_conn_grp_info[s] = (grp_ipaddr, grp_port)
+    service_conn_grp_info[s] = grp_pair
 
-    grp_sockets_grp_info[grp_socket] = (grp_ipaddr, grp_port)
-    grp_info_grp_sockets[(grp_ipaddr, grp_port)] = grp_socket
+    grp_sockets_grp_info[grp_socket] = grp_pair
+    grp_info_grp_sockets[grp_pair] = grp_socket
 
-    last_received_seq_number[(grp_ipaddr, grp_port)] = 0
-    last_valid_number[(grp_ipaddr, grp_port)] = 1
+    last_acked_seq_number[grp_pair] = 0
+    last_read_number[grp_pair] = 1
+    last_valid_number[grp_pair] = 0
 
     total_service_conn.append(s)
     total_grp_sockets.append(grp_socket)
 
     recv_messages_lock.acquire()
-    recv_messages[(grp_ipaddr, grp_port)] = {}
+    recv_messages[grp_pair] = {}
     recv_messages_lock.release()
 
     send_messages_lock.acquire()
-    send_messages[(grp_ipaddr, grp_port)] = []
+    send_messages[grp_pair] = []
     send_messages_lock.release()
 
     service_messages_lock.acquire()
-    service_messages[(grp_ipaddr, grp_port)] = []
+    service_messages[grp_pair] = []
     service_messages_lock.release()
 
 
@@ -216,18 +237,18 @@ def grp_recv(gsocket):
             # Then check group messages
             recv_messages_lock.acquire()
 
-            # First check if we received a message with seq_number == last_valid_number
-            if (last_valid_number[grp_pair] in recv_messages[grp_pair]):
+            # First check if we received a message with seq_number == last_read_number
+            if (last_read_number[grp_pair] in recv_messages[grp_pair]):
                 # Then check if this message is valid (we have only one message for this seq number with True)
-                if (len (recv_messages[grp_pair][last_valid_number[grp_pair]]) == 1 and recv_messages[grp_pair][last_valid_number[grp_pair]][0][2] == True):
+                if (len (recv_messages[grp_pair][last_read_number[grp_pair]]) == 1 and recv_messages[grp_pair][last_read_number[grp_pair]][0][2] == True):
 
-                    m = recv_messages[grp_pair][last_valid_number[grp_pair]][0][0] + ": " + recv_messages[grp_pair][last_valid_number[grp_pair]][0][1]
+                    m = recv_messages[grp_pair][last_read_number[grp_pair]][0][0] + ": " + recv_messages[grp_pair][last_read_number[grp_pair]][0][1]
                     # All messages are type 0
                     t = 0
                     # The client got the message, so delete it from internal buffer
-                    del recv_messages[grp_pair][last_valid_number[grp_pair]]
+                    del recv_messages[grp_pair][last_read_number[grp_pair]]
 
-                    last_valid_number[grp_pair] += 1
+                    last_read_number[grp_pair] += 1
 
                 recv_messages_lock.release()
                 break
@@ -246,10 +267,11 @@ def grp_send(gsocket, message):
     buffers_lock.acquire()
     grp_ipaddr = grp_sockets_grp_info[gsocket][0]
     grp_port = grp_sockets_grp_info[gsocket][1]
+    grp_pair = (grp_ipaddr, grp_port)
     buffers_lock.release()
 
     send_messages_lock.acquire()
-    send_messages[(grp_ipaddr, grp_port)].append(message)
+    send_messages[grp_pair].append([message, -1, -1, False])
     send_messages_lock.release()
 
 # ............................. </API> ............................. #
@@ -338,7 +360,6 @@ def listen_from_multicast():
                 # Received ACK for a message from the coordinator
 
                 name, seq_num = deconstruct_packet (VALID_MESSAGE, packet)
-
                 name = name.strip('\0')
 
                 print "Received ACK for ", seq_num
@@ -349,6 +370,19 @@ def listen_from_multicast():
                 grp_ipaddr = grp_sockets_grp_info[grp_socket][0]
                 grp_port = grp_sockets_grp_info[grp_socket][1]
                 grp_pair = (grp_ipaddr, grp_port)
+
+                last_valid_number[grp_pair] = seq_num
+
+                # Received ACK for my packet must make True the ACKed at send_messages
+                if (grp_info_my_name[grp_pair] == name):
+                    send_messages_lock.acquire()
+
+                    for i in xrange (len(send_messages[grp_pair])):
+                        if (send_messages[grp_pair][i][1] == seq_num):
+                            send_messages[grp_pair][i][3] = True
+                            break
+
+                    send_messages_lock.release()
 
                 buffers_lock.release()
 
@@ -391,29 +425,35 @@ def listen_from_multicast():
                 grp_port = grp_sockets_grp_info[grp_socket][1]
                 grp_pair = (grp_ipaddr, grp_port)
 
-                # If is the coordinator the send the ack
+
+                # 1.    Check if is the coordinator
+                # 2.    If the coordinator then check
+                #       if the seq_num is the last_acked_seq_num + 1 then
+                # 3.    send ACK for this packet and
+                # 4.    Update last_acked_seq_number
                 if (grp_info_coordinator[grp_pair]):
 
-                    if (seq_num not in grp_info_valid_messages[grp_pair]):
+                    if (last_acked_seq_number + 1 == seq_num):
+
                         grp_info_valid_messages[grp_pair][seq_num] = name
 
-                    valid_message_packet = construct_valid_message_packet (name, seq_num)
-                    grp_socket.sendto (valid_message_packet, grp_pair)
+                        valid_message_packet = construct_valid_message_packet (name, seq_num)
+                        grp_socket.sendto (valid_message_packet, grp_pair)
 
-                # Update sequence number
-                last_received_seq_number[grp_pair] = seq_num
-
+                        # Update sequence number
+                        last_acked_seq_number[grp_pair] = seq_num
 
                 buffers_lock.release()
 
                 # Update recv_messages
                 recv_messages_lock.acquire()
 
+                #Edw prepei na elegxw an einai to paketo apo dikou request epeidh to exasa giati tote mpainei True
+
                 if (seq_num in recv_messages[(grp_ipaddr, grp_port)]):
                     recv_messages[(grp_ipaddr, grp_port)][seq_num].append([name, message, False])
                 else:
                     recv_messages[(grp_ipaddr, grp_port)][seq_num] = [[name, message, False]]
-                print "Got message", recv_messages
 
                 recv_messages_lock.release()
 
@@ -433,19 +473,19 @@ def send_to_multicast():
             name = grp_info_my_name[grp_pair]
             buffers_lock.release()
 
-            # Send all the messages and delete them !!!!!(tha allaksei)
+            # Send all the messages (tha allaksei)
             for i in xrange(len(send_messages[grp_pair])):
 
-                buffers_lock.acquire()
-                last_received_seq_number[grp_pair] += 1
-                packet = construct_message_packet(name, send_messages[grp_pair][i], last_received_seq_number[grp_pair])
-                buffers_lock.release()
+                if (send_messages[grp_pair][i][3] == False and time.time() - send_messages[grp_pair][i][2] > TIMEOUT):
 
-                print "Send message to", grp_pair
+                    send_messages[grp_pair][i][1] = last_valid_number[grp_pair] + i
+                    send_messages[grp_pair][i][2] = time.time()
 
-                grp_socket.sendto(packet, grp_pair)
+                    buffers_lock.acquire()
+                    packet = construct_message_packet(name, send_messages[grp_pair][i][0], last_valid_number[grp_pair] + i)
+                    buffers_lock.release()
 
-            send_messages[grp_pair] = []
+                    grp_socket.sendto(packet, grp_pair)
 
         send_messages_lock.release()
 
