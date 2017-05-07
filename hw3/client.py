@@ -102,7 +102,7 @@ def receive_worker(gsocket, output_widget, window_object):
         output_widget.insert(tk.END, msg + "\n")
 
         # edw tha allaxi to ti mnm epistrefi! Einai mnm h bgainw apo group chat!
-        if ('disconnected' in msg.split()):
+        if (msg_type == -2):
             time.sleep(2)
             window_object.destroy()
             print 'Receiver done'
