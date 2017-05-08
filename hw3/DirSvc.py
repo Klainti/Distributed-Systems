@@ -61,7 +61,7 @@ def new_connections_thread():
 
         lock.acquire()
 
-        new_member_packet = construct_member_packet(name, 1)
+        new_member_packet = construct_member_packet(name, 1, 0)
 
         if ((grpip, grpport) not in msggroup_sockets):
             # First member init the group chat
@@ -117,18 +117,25 @@ def disconections_thread():
         for s in ready:
 
             # No need to read the packet. Its always the disconnection message
-            s.recv(1024)
+            packet = s.recv(1024)
 
+            grp_ipaddr, grp_port, recv_name, last_acked_seq_num = deconstruct_packet(LEAVE_ENCODING, packet)
+
+            grp_ipaddr = grp_ipaddr.strip('\0')
+            recv_name = recv_name.strip('\0')
 
             lock.acquire()
-
 
             # group_info and socket name
             group_info = socket_msggroup[s]
             name = socket_name[s]
 
+            if (group_info != (grp_ipaddr, grp_port) or name != recv_name):
+                print "Received invalid data"
+                continue
+
             # Construct the disconnected notification packet
-            packet = construct_member_packet(name, -1)
+            packet = construct_member_packet(name, -1, last_acked_seq_num)
 
             # Send it to every member of the group
             for member in msggroup_sockets[group_info]:
@@ -140,9 +147,12 @@ def disconections_thread():
 
             # Update buffers
             msggroup_sockets[group_info].remove(s)
-
             if (msggroup_sockets[group_info] == []):
                 del msggroup_sockets[group_info]
+
+            group_members[group_info].remove(name)
+            if (group_members[group_info] == []):
+                del group_members[group_info]
 
             total_sockets.remove(s)
             del socket_msggroup[s]
