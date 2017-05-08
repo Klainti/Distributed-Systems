@@ -3,7 +3,7 @@
 
     Also send/receive msg from group chat.
     When join is called we create three threads. One listening to DIrSvc,
-    one listening to multicast and one sendind to multicast.
+    one listening to multicast and one sending to multicast.
 """
 
 import socket
@@ -50,6 +50,8 @@ grp_info_members = {}
 last_valid_number = {}
 # Last seq_number the app got
 last_read_number = {}
+# Sequence numbers for which we dont have the message although it was acked
+missing_seq_nums = {}
 
 # All service connections and all multicast connections
 total_service_conn = []
@@ -64,8 +66,11 @@ recv_messages_lock = thread.allocate_lock()
 
 # The messages which are going to be send
 send_messages = {}
-# [Message, Seq_num with which was send, time.time() when send, ACKed(T/F)]
+# [Message, Seq_num with which was send, time.time() when send]
 send_messages_lock = thread.allocate_lock()
+
+acked_messages = {}
+acked_messages_lock = thread.allocate_lock()
 
 # The messages received from DirSvc
 service_messages = {}
@@ -152,6 +157,8 @@ def grp_join(grp_ipaddr, grp_port, myid):
     total_service_conn.append(s)
     total_grp_sockets.append(grp_socket)
 
+    missing_seq_nums[grp_pair] = []
+
     recv_messages_lock.acquire()
     recv_messages[grp_pair] = {}
     recv_messages_lock.release()
@@ -163,6 +170,10 @@ def grp_join(grp_ipaddr, grp_port, myid):
     service_messages_lock.acquire()
     service_messages[grp_pair] = []
     service_messages_lock.release()
+
+    acked_messages_lock.acquire()
+    acked_messages[grp_pair] = {}
+    acked_messages_lock.release()
 
     buffers_lock.release()
 
@@ -295,7 +306,7 @@ def grp_send(gsocket, message):
     buffers_lock.release()
 
     send_messages_lock.acquire()
-    send_messages[grp_pair].append([message, -1, -1, False])
+    send_messages[grp_pair].append([message, -1, -1])
     send_messages_lock.release()
 
 # ............................. </API> ............................. #
@@ -332,26 +343,32 @@ def listen_from_DirSvc():
             grp_pair = (grp_ipaddr, grp_port)
             buffers_lock.release()
 
-            # print "Received message for DirSvc"
-
-            # Add the new message to the queue
+            # Add the new message to the queue with the correct message type
             service_messages_lock.acquire()
 
+            # Case 1: Someone is connected
             if (state == 1):
                 service_messages[grp_pair].append([name + " is connected", 1])
 
+                # Update members list
                 buffers_lock.acquire()
                 grp_info_members[grp_pair].append(name)
                 buffers_lock.release()
 
+            # Case 2: Someone is disconnected
             elif (state == -1):
 
                 buffers_lock.acquire()
 
+                # Update members list
                 grp_info_members[grp_pair].remove(name)
 
+                # I disconnected (delete and close everything)
                 if (name == grp_info_my_name[grp_pair]):
+
+                    # Case 2.1: Message type -2 because i disconnected
                     service_messages[grp_pair].append(["Disconnected from group chat successfully", -2])
+
                     service_conn.close()
 
                     total_service_conn.remove(service_conn)
@@ -360,12 +377,17 @@ def listen_from_DirSvc():
                     del grp_info_members[grp_pair]
 
                     buffers_lock.release()
+
+                    service_messages_lock.release()
+
+                    # Paizei na thelei kai alla del
+
                     continue
 
+                # Elegxw an eimai o prwtos pleon sto group opote prepei na ginw coordinator
                 if (grp_info_members[grp_pair] != []):
                     # If i am the first i must become the coordinator
                     if (grp_info_members[grp_pair][0] == grp_info_my_name[grp_pair]):
-                        print "NEW COORDINATOR"
                         grp_info_coordinator[grp_pair] = True
                         last_acked_seq_number[grp_pair]  = last_acked_seq_num
                 else:
@@ -373,9 +395,8 @@ def listen_from_DirSvc():
 
                 buffers_lock.release()
 
+                # Case 2.2: Message type -1 because someone else disconnected
                 service_messages[grp_pair].append([name + " is disconnected", -1])
-
-            # print "service_messages", service_messages
 
             service_messages_lock.release()
 
@@ -396,13 +417,41 @@ def listen_from_multicast():
         for grp_socket in ready:
 
             packet, addr = grp_socket.recvfrom(1024)
-            if (len(packet) == 154):
+            if (len(packet) == 4):
+
+                # Received request for a previous message
+
+                requested_seq_num = deconstruct_packet(PREVIOUS_MESSAGE_REQUEST_ENCODING, packet)
+
+                # Get group info, name and socket
+                buffers_lock.acquire()
+
+                grp_ipaddr = grp_sockets_grp_info[grp_socket][0]
+                grp_port = grp_sockets_grp_info[grp_socket][1]
+                grp_pair = (grp_ipaddr, grp_port)
+
+                name = grp_info_my_name[grp_pair]
+
+                grp_socket = grp_info_grp_sockets[grp_pair]
+
+                buffers_lock.release()
+
+                acked_messages_lock.acuire()
+
+                # I am the sender of the message with this seq_num so I send it
+                if (requested_seq_num in acked_messages[grp_pair].keys()):
+                    packet = construct_message_packet(name, acked_messages[grp_pair][requested_seq_num], requested_seq_num)
+                    grp_socket.sendto(packet, grp_pair)
+
+                acked_messages_lock.release()
+
+
+            elif (len(packet) == 154):
+
                 # Received ACK for a message from the coordinator
 
                 name, seq_num = deconstruct_packet(VALID_MESSAGE, packet)
                 name = name.strip('\0')
-
-                print "Received ACK for ", seq_num
 
                 buffers_lock.acquire()
 
@@ -411,15 +460,28 @@ def listen_from_multicast():
                 grp_port = grp_sockets_grp_info[grp_socket][1]
                 grp_pair = (grp_ipaddr, grp_port)
 
+                # Check if missed any previous message
+                if (last_valid_number[grp_pair]+1 != seq_num):
+                    for i in xrange(last_valid_number[grp_pair]+1, seq_num):
+                        missing_seq_nums[grp_pair].append([i, -1])
+
                 last_valid_number[grp_pair] = seq_num
 
-                # Received ACK for my packet must make True the ACKed at send_messages
+                # Received ACK for my packet, must save message to acked_messages
                 if (grp_info_my_name[grp_pair] == name):
+
                     send_messages_lock.acquire()
 
                     for i in xrange(len(send_messages[grp_pair])):
                         if (send_messages[grp_pair][i][1] == seq_num):
-                            send_messages[grp_pair][i][3] = True
+
+                            # Save it at acked_messages and delete it from send_messages
+                            acked_messages_lock.acquire()
+                            acked_messages[grp_pair][seq_num] = send_messages[grp_pair][i][0]
+                            acked_messages_lock.release()
+
+                            del send_messages[grp_pair][i]
+
                             break
 
                     send_messages_lock.release()
@@ -430,19 +492,20 @@ def listen_from_multicast():
 
                 found_message = False
 
+                # Search for the message at recv_messages
                 if (seq_num in recv_messages[grp_pair]):
 
                     i = 0
                     while (i < len(recv_messages[grp_pair][seq_num])):
 
+                        # Delete every other message with this seq_num
                         if (recv_messages[grp_pair][seq_num][i][0] != name):
                             del recv_messages[grp_pair][seq_num][i]
                         else:
+                            # Make it valid (True)
                             found_message = True
                             recv_messages[grp_pair][seq_num][i][2] = True
                             i += 1
-
-                print recv_messages
 
                 recv_messages_lock.release()
 
@@ -483,17 +546,34 @@ def listen_from_multicast():
                         # Update sequence number
                         last_acked_seq_number[grp_pair] = seq_num
 
-                buffers_lock.release()
+                    # Else send ACK for this seq_num
+
 
                 # Update recv_messages
                 recv_messages_lock.acquire()
 
-                # Edw prepei na elegxw an einai to paketo apo dikou request epeidh to exasa giati tote mpainei True
 
-                if (seq_num in recv_messages[(grp_ipaddr, grp_port)]):
-                    recv_messages[(grp_ipaddr, grp_port)][seq_num].append([name, message, False])
+                # Search for the seq_num at missing_seq_nums
+                is_retrans = False
+
+                for i in xrange(len(missing_seq_nums[grp_pair])):
+                    if (missing_seq_nums[grp_pair][i][0] == seq_num):
+                        is_retrans = True
+                        del missing_seq_nums[grp_pair][i]
+                        break
+
+                # If seq_num in missing_seq_nums then the message is from retransmit, so is valid (True)
+                if (is_retrans):
+                    print "Received ", message, "with seq_num", seq_num, "from retransmit"
+                    recv_messages[grp_pair][seq_num] = [[name, message, True]]
+
+                # Na elegxw an einai retransmit na mhn to krataw
+                elif (seq_num in recv_messages[(grp_ipaddr, grp_port)]):
+                    recv_messages[grp_pair][seq_num].append([name, message, False])
                 else:
-                    recv_messages[(grp_ipaddr, grp_port)][seq_num] = [[name, message, False]]
+                    recv_messages[grp_pair][seq_num] = [[name, message, False]]
+
+                buffers_lock.release()
 
                 recv_messages_lock.release()
 
@@ -505,7 +585,7 @@ def send_to_multicast():
 
         send_messages_lock.acquire()
 
-        # For each group
+        # For each group send the first message from send_messages
         for grp_pair in send_messages.keys():
 
             buffers_lock.acquire()
@@ -513,26 +593,43 @@ def send_to_multicast():
             name = grp_info_my_name[grp_pair]
             buffers_lock.release()
 
-            # Send only the first False message
-            for i in xrange(len(send_messages[grp_pair])):
+            # Send only the first message
+            if (len(send_messages[grp_pair]) > 0):
 
-                if (send_messages[grp_pair][i][3] == False):
+                # Send it only if TIMEOUT has passed
+                if(time.time() - send_messages[grp_pair][0][2] > TIMEOUT):
 
-                    # Send it only if TIMEOUT has passed
-                    if(time.time() - send_messages[grp_pair][i][2] > TIMEOUT):
+                    send_messages[grp_pair][0][1] = last_valid_number[grp_pair] + 1
+                    send_messages[grp_pair][0][2] = time.time()
 
-                        send_messages[grp_pair][i][1] = last_valid_number[grp_pair] + 1
-                        send_messages[grp_pair][i][2] = time.time()
+                    buffers_lock.acquire()
+                    packet = construct_message_packet(name, send_messages[grp_pair][0][0], last_valid_number[grp_pair] + 1)
+                    buffers_lock.release()
 
-                        buffers_lock.acquire()
-                        packet = construct_message_packet(name, send_messages[grp_pair][i][0], last_valid_number[grp_pair] + 1)
-                        buffers_lock.release()
-
-                        grp_socket.sendto(packet, grp_pair)
-
-                    break
+                    grp_socket.sendto(packet, grp_pair)
 
         send_messages_lock.release()
+
+        buffers_lock.acquire()
+
+        # For each group send requests for the missing messages
+        for grp_pair in missing_seq_nums.keys():
+
+            grp_socket = grp_info_grp_sockets[grp_pair]
+
+            # Send request for all the missing messages
+            for i in xrange(len(missing_seq_nums[grp_pair])):
+
+                # Send it only if TIMEOUT has passed
+                if (time.time() - missing_seq_nums[grp_pair][i][1] > TIMEOUT):
+
+                    missing_seq_nums[grp_pair][i][1] = time.time()
+
+                    packet = construct_previous_message_request_packet(missing_seq_nums[grp_pair][i][0])
+
+                    grp_socket.sendto(packet, grp_pair)
+
+        buffers_lock.release()
 
         time.sleep(0.05)
 

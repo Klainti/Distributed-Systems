@@ -102,10 +102,10 @@ def receive_worker(gsocket, output_widget, window_object):
         output_widget.insert(tk.END, msg + "\n")
 
         # edw tha allaxi to ti mnm epistrefi! Einai mnm h bgainw apo group chat!
-        if (msg_type == -2):
+        if (msg_type == I_DISCONNECTED):
+            print 'Receiver done'
             time.sleep(2)
             window_object.destroy()
-            print 'Receiver done'
             break
 
 
@@ -171,5 +171,5 @@ def main():
     root.mainloop()
 
 
-if __name__ == "__main__" :
+if __name__ == "__main__":
     main()
