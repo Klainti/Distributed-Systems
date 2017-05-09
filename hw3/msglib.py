@@ -286,6 +286,8 @@ def grp_recv(gsocket):
                     # The client got the message, so delete it from internal buffer
                     del recv_messages[grp_pair][last_read_number[grp_pair]]
 
+                    print "Got message with", last_read_number[grp_pair]
+
                     last_read_number[grp_pair] += 1
 
                     recv_messages_lock.release()
@@ -475,6 +477,8 @@ def listen_from_multicast():
                 name, seq_num = deconstruct_packet(VALID_MESSAGE, packet)
                 name = name.strip('\0')
 
+                print "Received ACK for", seq_num, name
+
                 buffers_lock.acquire()
 
                 # Get group info
@@ -537,6 +541,8 @@ def listen_from_multicast():
                             recv_messages[grp_pair][seq_num][i][2] = True
                             i += 1
 
+                print recv_messages
+
                 recv_messages_lock.release()
 
                 if (not found_message):
@@ -551,17 +557,14 @@ def listen_from_multicast():
                 name = name.strip('\0')
                 message = message.strip('\0')
 
+                print "Received message", message, "from", name, "with", seq_num
+
                 buffers_lock.acquire()
 
                 # Get group info
                 grp_ipaddr = grp_sockets_grp_info[grp_socket][0]
                 grp_port = grp_sockets_grp_info[grp_socket][1]
                 grp_pair = (grp_ipaddr, grp_port)
-
-                # Already received this message
-                if (last_read_number[grp_pair] > seq_num):
-                    buffers_lock.release()
-                    continue
 
                 # 1.    Check if is the coordinator
                 # 2.    If the coordinator then check
@@ -573,6 +576,8 @@ def listen_from_multicast():
                     if (last_acked_seq_number[grp_pair] + 1 == seq_num):
 
                         grp_info_valid_messages[grp_pair][seq_num] = name
+
+                        print "Send ACK for", seq_num
 
                         valid_message_packet = construct_valid_message_packet(name, seq_num)
                         grp_socket.sendto(valid_message_packet, grp_pair)
@@ -587,6 +592,13 @@ def listen_from_multicast():
 
                         valid_message_packet = construct_valid_message_packet(name, seq_num)
                         grp_socket.sendto(valid_message_packet, grp_pair)
+
+                        print "Send again ACK for", seq_num, name
+
+                # Already received this message
+                if (last_read_number[grp_pair] > seq_num):
+                    buffers_lock.release()
+                    continue
 
                 buffers_lock.release()
 
@@ -611,10 +623,12 @@ def listen_from_multicast():
                     recv_messages[grp_pair][seq_num] = [[name, message, True]]
 
                 # Na elegxw an einai retransmit na mhn to krataw
-                elif (seq_num in recv_messages[(grp_ipaddr, grp_port)] and [name, message, False] not in recv_messages[grp_pair][seq_num]):
+                elif (seq_num in recv_messages[grp_pair] and [name, message, False] not in recv_messages[grp_pair][seq_num] and [name, message, True] not in recv_messages[grp_pair][seq_num]):
                     recv_messages[grp_pair][seq_num].append([name, message, False])
-                else:
+                elif (seq_num not in recv_messages[grp_pair]):
                     recv_messages[grp_pair][seq_num] = [[name, message, False]]
+
+                print recv_messages
 
                 recv_messages_lock.release()
 
@@ -645,6 +659,8 @@ def send_to_multicast():
 
                     buffers_lock.acquire()
                     packet = construct_message_packet(name, send_messages[grp_pair][0][0], last_valid_number[grp_pair] + 1)
+
+                    print "Send message", send_messages[grp_pair][0][0], "with", last_valid_number[grp_pair] + 1
 
                     buffers_lock.release()
 
