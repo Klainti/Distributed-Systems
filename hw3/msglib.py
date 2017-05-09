@@ -126,6 +126,9 @@ def grp_join(grp_ipaddr, grp_port, myid):
     if (grp_info_members[grp_pair] == []):
         grp_info_coordinator[grp_pair] = True
 
+    print "Previous members", grp_info_members[grp_pair]
+    print "Coordinator:", grp_info_coordinator[grp_pair]
+
     buffers_lock.release()
 
     # Start the threads only the first time
@@ -159,6 +162,8 @@ def grp_join(grp_ipaddr, grp_port, myid):
 
     missing_seq_nums[grp_pair] = []
 
+    buffers_lock.release()
+
     recv_messages_lock.acquire()
     recv_messages[grp_pair] = {}
     recv_messages_lock.release()
@@ -174,8 +179,6 @@ def grp_join(grp_ipaddr, grp_port, myid):
     acked_messages_lock.acquire()
     acked_messages[grp_pair] = {}
     acked_messages_lock.release()
-
-    buffers_lock.release()
 
     return grp_socket
 
@@ -366,6 +369,8 @@ def listen_from_DirSvc():
 
                         name = grp_info_valid_messages[grp_pair][biggest_seq_num]
 
+                        time.sleep (0.2)
+
                         packet = construct_valid_message_packet(name, biggest_seq_num)
                         grp_socket.sendto(packet, grp_pair)
 
@@ -451,14 +456,6 @@ def listen_from_multicast():
 
                 grp_socket = grp_info_grp_sockets[grp_pair]
 
-                # If i am the coordinator send the ACK for the requested_seq_num
-                if (grp_info_coordinator[grp_pair]):
-                    name = grp_info_valid_messages[grp_pair][requested_seq_num]
-
-                    packet = construct_valid_message_packet(name, requested_seq_num)
-                    grp_socket.sendto(packet, grp_pair)
-
-
                 buffers_lock.release()
 
                 acked_messages_lock.acquire()
@@ -500,6 +497,8 @@ def listen_from_multicast():
                 # Received ACK for my packet, must save message to acked_messages
                 if (grp_info_my_name[grp_pair] == name):
 
+                    buffers_lock.release()
+
                     send_messages_lock.acquire()
 
                     for i in xrange(len(send_messages[grp_pair])):
@@ -516,7 +515,8 @@ def listen_from_multicast():
 
                     send_messages_lock.release()
 
-                buffers_lock.release()
+                else:
+                    buffers_lock.release()
 
                 recv_messages_lock.acquire()
 
@@ -581,17 +581,19 @@ def listen_from_multicast():
                         last_acked_seq_number[grp_pair] = seq_num
 
                     # if already send ACK for this seq_num send it again
-                    elif (seq_num <= last_acked_seq_number[grp_pair]):
+                    elif (seq_num <= last_acked_seq_number[grp_pair] and name != grp_info_valid_messages[grp_pair][seq_num]):
 
                         name = grp_info_valid_messages[grp_pair][seq_num]
 
                         valid_message_packet = construct_valid_message_packet(name, seq_num)
                         grp_socket.sendto(valid_message_packet, grp_pair)
 
+                buffers_lock.release()
 
                 # Update recv_messages
                 recv_messages_lock.acquire()
 
+                buffers_lock.acquire()
 
                 # Search for the seq_num at missing_seq_nums
                 is_missing = False
@@ -602,6 +604,8 @@ def listen_from_multicast():
                         del missing_seq_nums[grp_pair][i]
                         break
 
+                buffers_lock.release()
+
                 # If seq_num in missing_seq_nums then the message is from retransmit, so is valid (True)
                 if (is_missing):
                     recv_messages[grp_pair][seq_num] = [[name, message, True]]
@@ -611,8 +615,6 @@ def listen_from_multicast():
                     recv_messages[grp_pair][seq_num].append([name, message, False])
                 else:
                     recv_messages[grp_pair][seq_num] = [[name, message, False]]
-
-                buffers_lock.release()
 
                 recv_messages_lock.release()
 
@@ -643,6 +645,7 @@ def send_to_multicast():
 
                     buffers_lock.acquire()
                     packet = construct_message_packet(name, send_messages[grp_pair][0][0], last_valid_number[grp_pair] + 1)
+
                     buffers_lock.release()
 
                     grp_socket.sendto(packet, grp_pair)
