@@ -493,6 +493,8 @@ def listen_from_multicast():
                 name, seq_num = deconstruct_packet(VALID_MESSAGE, packet)
                 name = name.strip('\0')
 
+                print "Received ACK for", seq_num, name
+
                 buffers_lock.acquire()
 
                 # Get group info
@@ -568,6 +570,8 @@ def listen_from_multicast():
 
                 name = name.strip('\0')
                 message = message.strip('\0')
+
+                print "Received", message, "from", name, "with", seq_num
 
                 buffers_lock.acquire()
 
@@ -669,8 +673,10 @@ def send_to_multicast():
                     send_messages[grp_pair][0][2] = time.time()
 
                     buffers_lock.acquire()
-                    packet = construct_message_packet(name, send_messages[grp_pair][0][0], last_valid_number[grp_pair] + 1)
 
+                    print "Send", send_messages[grp_pair][0][0], "with", last_valid_number[grp_pair] + 1
+
+                    packet = construct_message_packet(name, send_messages[grp_pair][0][0], last_valid_number[grp_pair] + 1)
                     buffers_lock.release()
 
                     grp_socket.sendto(packet, grp_pair)

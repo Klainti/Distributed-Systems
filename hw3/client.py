@@ -100,6 +100,7 @@ def receive_worker(gsocket, output_widget, window_object):
         msg, msg_type = grp_recv(gsocket)
         msg = msg.strip('\n')
         output_widget.insert(tk.END, msg + "\n")
+        output_widget.see(tk.END)
 
         # edw tha allaxi to ti mnm epistrefi! Einai mnm h bgainw apo group chat!
         if (msg_type == I_DISCONNECTED):
