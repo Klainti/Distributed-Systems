@@ -205,21 +205,6 @@ def grp_leave(gsocket):
             service_conn = s
             break
 
-    # Delete everything about that group
-
-    send_messages_lock.acquire()
-    del send_messages[grp_pair]
-    send_messages_lock.release()
-
-    del grp_info_coordinator[grp_pair]
-    del grp_info_valid_messages[grp_pair]
-    del last_acked_seq_number[grp_pair]
-
-    del grp_sockets_grp_info[gsocket]
-    del grp_info_grp_sockets[grp_pair]
-
-    total_grp_sockets.remove(gsocket)
-
     buffers_lock.release()
 
     request_for_dis = construct_leave_packet(grp_ipaddr, grp_port, my_name, last_seq_num)
@@ -231,6 +216,7 @@ def grp_leave(gsocket):
 
 # Return the next message
 def grp_recv(gsocket):
+
 
     # Get group info
     buffers_lock.acquire()
@@ -249,6 +235,7 @@ def grp_recv(gsocket):
         service_messages_lock.acquire()
 
         if (len(service_messages[grp_pair]) > 0):
+
             m = service_messages[grp_pair][0][0]
             t = service_messages[grp_pair][0][1]
 
@@ -257,13 +244,45 @@ def grp_recv(gsocket):
                 # So delete the receive messages buffers
                 del service_messages[grp_pair]
 
+                service_messages_lock.release()
+
+                buffers_lock.acquire()
+
+                del grp_info_coordinator[grp_pair]
+                del grp_info_valid_messages[grp_pair]
+                del last_acked_seq_number[grp_pair]
+
+                del grp_info_grp_sockets[grp_pair]
+                del grp_sockets_grp_info[gsocket]
+
+                del grp_info_members[grp_pair]
+                del grp_info_my_name[grp_pair]
+
+                del last_valid_number[grp_pair]
+                del last_read_number[grp_pair]
+                del missing_seq_nums[grp_pair]
+
+                total_grp_sockets.remove(gsocket)
+
+                buffers_lock.release()
+
+                send_messages_lock.acquire()
+                del send_messages[grp_pair]
+                send_messages_lock.release()
+
+                acked_messages_lock.acquire()
+                del acked_messages[grp_pair]
+                acked_messages_lock.release()
+
                 recv_messages_lock.acquire()
                 del recv_messages[grp_pair]
                 recv_messages_lock.release()
+
             else:
                 del service_messages[grp_pair][0]
 
-            service_messages_lock.release()
+                service_messages_lock.release()
+
             break
 
         else:
@@ -391,13 +410,12 @@ def listen_from_DirSvc():
 
                     total_service_conn.remove(service_conn)
 
-                    del grp_info_my_name[grp_pair]
-                    del grp_info_members[grp_pair]
+                    del service_conn_grp_info[service_conn]
 
                     buffers_lock.release()
 
                     service_messages_lock.release()
-                    # Paizei na thelei kai alla del
+
                     continue
 
                 # Elegxw an eimai twra o prwtos pleon sto group opote prepei na ginw coordinator
@@ -430,7 +448,10 @@ def listen_from_multicast():
         current_grp_sockets = total_grp_sockets
         buffers_lock.release()
 
-        ready, _, _ = select.select(current_grp_sockets, [], [], 1)
+        try:
+            ready, _, _ = select.select(current_grp_sockets, [], [], 1)
+        except socket.error:
+            pass
 
         for grp_socket in ready:
 
