@@ -513,7 +513,16 @@ def listen_from_multicast():
                 # Check if missed any previous message
                 if (last_valid_number[grp_pair]+1 != seq_num):
                     for i in xrange(last_valid_number[grp_pair]+1, seq_num):
-                        missing_seq_nums[grp_pair].append([i, -1])
+
+                        already_in = False
+                        for pos in xrange(len(missing_seq_nums[grp_pair])):
+                            if (missing_seq_nums[grp_pair][pos][0] == i):
+                                already_in = True
+                                break
+
+                        if (not already_in):
+                            missing_seq_nums[grp_pair].append([i, -1])
+
                         print "Missing seq_nums", missing_seq_nums
 
                 last_valid_number[grp_pair] = max(last_valid_number[grp_pair], seq_num)
@@ -568,7 +577,16 @@ def listen_from_multicast():
 
                 if (not found_message):
                     buffers_lock.acquire()
-                    missing_seq_nums[grp_pair].append([seq_num, -1])
+
+                    already_in = False
+                    for pos in xrange(len(missing_seq_nums[grp_pair])):
+                        if (missing_seq_nums[grp_pair][pos][0] == seq_num):
+                            already_in = True
+                            break
+
+                    if (not already_in):
+                        missing_seq_nums[grp_pair].append([seq_num, -1])
+
                     print "Message not found", missing_seq_nums
                     buffers_lock.release()
 
