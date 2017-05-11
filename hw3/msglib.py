@@ -310,7 +310,7 @@ def grp_recv(gsocket):
 
             recv_messages_lock.release()
 
-        time.sleep(0.05)
+        time.sleep(0.0009)
 
     return m, t
 
@@ -463,7 +463,7 @@ def listen_from_multicast():
 
                 requested_seq_num = deconstruct_packet(PREVIOUS_MESSAGE_REQUEST_ENCODING, packet)[0]
 
-                print "Received request for", requested_seq_num
+                # print "Received request for", requested_seq_num
 
                 # Get group info, name and socket
                 buffers_lock.acquire()
@@ -484,7 +484,7 @@ def listen_from_multicast():
                 if (requested_seq_num in acked_messages[grp_pair].keys()):
                     packet = construct_message_packet(name, acked_messages[grp_pair][requested_seq_num], requested_seq_num)
                     grp_socket.sendto(packet, grp_pair)
-                    print "Send", acked_messages[grp_pair][requested_seq_num], "with", requested_seq_num, "because of request"
+                    # print "Send", acked_messages[grp_pair][requested_seq_num], "with", requested_seq_num, "because of request"
 
                 acked_messages_lock.release()
 
@@ -496,7 +496,7 @@ def listen_from_multicast():
                 name, seq_num = deconstruct_packet(VALID_MESSAGE, packet)
                 name = name.strip('\0')
 
-                print "Received ACK for", seq_num, name
+                # print"Received ACK for", seq_num, name, time.time()
 
                 buffers_lock.acquire()
 
@@ -523,11 +523,11 @@ def listen_from_multicast():
                         if (not already_in):
                             missing_seq_nums[grp_pair].append([i, -1])
 
-                        print "Missing seq_nums", missing_seq_nums
+                        # print "Missing seq_nums", missing_seq_nums
 
                 last_valid_number[grp_pair] = max(last_valid_number[grp_pair], seq_num)
 
-                print "Last valid number", last_valid_number[grp_pair]
+                # print "Last valid number", last_valid_number[grp_pair]
 
                 # Received ACK for my packet, must save message to acked_messages
                 if (grp_info_my_name[grp_pair] == name):
@@ -570,7 +570,7 @@ def listen_from_multicast():
                             # Make it valid (True)
                             found_message = True
                             recv_messages[grp_pair][seq_num][i][2] = True
-                            print "Message found", recv_messages
+                            # print "Message found", recv_messages
                             i += 1
 
                 recv_messages_lock.release()
@@ -587,7 +587,7 @@ def listen_from_multicast():
                     if (not already_in):
                         missing_seq_nums[grp_pair].append([seq_num, -1])
 
-                    print "Message not found", missing_seq_nums
+                    # print "Message not found", missing_seq_nums
                     buffers_lock.release()
 
             elif (len(packet) == 1024):
@@ -597,7 +597,7 @@ def listen_from_multicast():
                 name = name.strip('\0')
                 message = message.strip('\0')
 
-                print "Received", message, "from", name, "with", seq_num
+                # print"Received", message, "from", name, "with", seq_num, time.time()
 
                 buffers_lock.acquire()
 
@@ -620,7 +620,7 @@ def listen_from_multicast():
                         valid_message_packet = construct_valid_message_packet(name, seq_num)
                         grp_socket.sendto(valid_message_packet, grp_pair)
 
-                        print "Send ACK for first time for", seq_num
+                        # print"Send ACK for first time for", seq_num, time.time()
 
                         # Update sequence number
                         last_acked_seq_number[grp_pair] = seq_num
@@ -634,7 +634,7 @@ def listen_from_multicast():
                         valid_message_packet = construct_valid_message_packet(name, seq_num)
                         grp_socket.sendto(valid_message_packet, grp_pair)
 
-                        print "Send ACK again for", seq_num
+                        # print "Send ACK again for", seq_num
 
                     elif (seq_num == last_acked_seq_number[grp_pair]):
 
@@ -661,7 +661,7 @@ def listen_from_multicast():
                 for i in xrange(len(missing_seq_nums[grp_pair])):
                     if (missing_seq_nums[grp_pair][i][0] == seq_num):
                         is_missing = True
-                        print "Is retransmit for missing num", missing_seq_nums
+                        # print "Is retransmit for missing num", missing_seq_nums
                         del missing_seq_nums[grp_pair][i]
                         break
 
@@ -677,7 +677,7 @@ def listen_from_multicast():
                 elif (seq_num not in recv_messages[grp_pair]):
                     recv_messages[grp_pair][seq_num] = [[name, message, False]]
 
-                print "Received messages", recv_messages
+                # print "Received messages", recv_messages
 
                 recv_messages_lock.release()
 
@@ -708,7 +708,7 @@ def send_to_multicast():
 
                     buffers_lock.acquire()
 
-                    print "Send", send_messages[grp_pair][0][0], "with", last_valid_number[grp_pair] + 1
+                    # print"Send", send_messages[grp_pair][0][0], "with", last_valid_number[grp_pair] + 1, time.time()
 
                     packet = construct_message_packet(name, send_messages[grp_pair][0][0], last_valid_number[grp_pair] + 1)
                     buffers_lock.release()
@@ -734,12 +734,12 @@ def send_to_multicast():
 
                     packet = construct_previous_message_request_packet(missing_seq_nums[grp_pair][i][0])
 
-                    print "Send request for", missing_seq_nums[grp_pair][i][0]
+                    # print "Send request for", missing_seq_nums[grp_pair][i][0]
 
                     grp_socket.sendto(packet, grp_pair)
 
         buffers_lock.release()
 
-        time.sleep(0.05)
+        time.sleep(0.0009)
 
 # ............................. </THREADS> ............................. #

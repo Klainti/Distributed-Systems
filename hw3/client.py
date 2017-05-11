@@ -87,6 +87,7 @@ def send_worker(gsocket, input_widget):
         if (input_widget in sending_dict.keys()):
             if (sending_dict[input_widget] is not []):
                 for msg in sending_dict[input_widget]:
+                    print "Send %s, %.3f" %(msg, time.time())
                     grp_send(gsocket, msg)
 
                 sending_dict[input_widget] = []
@@ -99,6 +100,7 @@ def receive_worker(gsocket, output_widget, window_object):
 
         msg, msg_type = grp_recv(gsocket)
         msg = msg.strip('\n')
+        print "Received %s, %.3f" %(msg, time.time())
         output_widget.insert(tk.END, msg + "\n")
         output_widget.see(tk.END)
 
