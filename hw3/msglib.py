@@ -19,6 +19,10 @@ from multicast_module import *
 # Time to retransmit the message if not received ACK
 RESEND_TIMEOUT = 1
 
+# Every ACK_TIMEOUT send ACK for the last_acked_seq_number
+ACK_TIMEOUT = 2
+
+
 first_time = True
 
 # A lock for all the buffers
@@ -32,6 +36,8 @@ grp_info_coordinator = {}
 grp_info_valid_messages = {}
 # Biggest sequence number which has been ACKed
 last_acked_seq_number = {}
+# The time.time() of the last send of the last_acked_seq_number ACK
+last_time_ACK_send = {}
 
 # ........................ </Coordinator buffers> ........................ #
 
@@ -158,6 +164,8 @@ def grp_join(grp_ipaddr, grp_port, myid):
     total_grp_sockets.append(grp_socket)
 
     missing_seq_nums[grp_pair] = []
+
+    last_time_ACK_send[grp_pair] = 0
 
     buffers_lock.release()
 
@@ -740,6 +748,25 @@ def send_to_multicast():
 
                     # print "Send request for", missing_seq_nums[grp_pair][i][0]
 
+                    grp_socket.sendto(packet, grp_pair)
+
+        # Check if I am the coordinator and send the last_acked_seq_number
+        for grp_pair in grp_info_coordinator.keys():
+
+            if (grp_info_coordinator[grp_pair] and (time.time() - last_time_ACK_send[grp_pair]) > ACK_TIMEOUT):
+
+                grp_socket = grp_info_grp_sockets[grp_pair]
+
+                biggest_seq_num = last_acked_seq_number[grp_pair]
+
+                # The first time only (biggest_seq_num == 0)
+                if (biggest_seq_num in grp_info_valid_messages[grp_pair]):
+
+                    name = grp_info_valid_messages[grp_pair][biggest_seq_num]
+
+                    last_time_ACK_send[grp_pair] = time.time()
+
+                    packet = construct_valid_message_packet(name, biggest_seq_num)
                     grp_socket.sendto(packet, grp_pair)
 
         buffers_lock.release()
