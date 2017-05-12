@@ -17,7 +17,7 @@ from multicast_module import *
 # ............................. <Variables> ............................. #
 
 # Time to retransmit the message if not received ACK
-TIMEOUT = 0.5
+RESEND_TIMEOUT = 1
 
 first_time = True
 
@@ -440,7 +440,7 @@ def listen_from_DirSvc():
 # The thread which receives messages from multicasts
 def listen_from_multicast():
 
-    global total_grp_sockets
+    global total_grp_sockets, RESEND_TIMEOUT
 
     while (True):
 
@@ -543,6 +543,10 @@ def listen_from_multicast():
                             acked_messages_lock.acquire()
                             acked_messages[grp_pair][seq_num] = send_messages[grp_pair][i][0]
                             acked_messages_lock.release()
+
+                            RESEND_TIMEOUT = 1.5*(RESEND_TIMEOUT + time.time() - send_messages[grp_pair][i][2])/2
+
+                            print "Set RESEND_TIMEOUT to", RESEND_TIMEOUT
 
                             del send_messages[grp_pair][i]
 
@@ -700,8 +704,8 @@ def send_to_multicast():
             # Send only the first message
             if (len(send_messages[grp_pair]) > 0):
 
-                # Send it only if TIMEOUT has passed
-                if(time.time() - send_messages[grp_pair][0][2] > TIMEOUT):
+                # Send it only if RESEND_TIMEOUT has passed
+                if(time.time() - send_messages[grp_pair][0][2] > RESEND_TIMEOUT):
 
                     send_messages[grp_pair][0][1] = last_valid_number[grp_pair] + 1
                     send_messages[grp_pair][0][2] = time.time()
@@ -727,8 +731,8 @@ def send_to_multicast():
             # Send request for all the missing messages
             for i in xrange(len(missing_seq_nums[grp_pair])):
 
-                # Send it only if TIMEOUT has passed
-                if (time.time() - missing_seq_nums[grp_pair][i][1] > TIMEOUT):
+                # Send it only if RESEND_TIMEOUT has passed
+                if (time.time() - missing_seq_nums[grp_pair][i][1] > RESEND_TIMEOUT):
 
                     missing_seq_nums[grp_pair][i][1] = time.time()
 
