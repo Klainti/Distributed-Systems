@@ -2,7 +2,6 @@ import socket
 import time
 import Tkinter as tk
 import threading
-import datetime
 
 from packet_struct import *
 from msglib import *
@@ -88,8 +87,7 @@ def send_worker(gsocket, input_widget):
         if (input_widget in sending_dict.keys()):
             if (sending_dict[input_widget] is not []):
                 for msg in sending_dict[input_widget]:
-                    now = datetime.datetime.now()
-                    print "Send %s, %d" %(msg, now.microsecond)
+                    print "Send %s, %.3f" %(msg, time.time())
                     grp_send(gsocket, msg)
 
                 sending_dict[input_widget] = []
@@ -103,7 +101,7 @@ def receive_worker(gsocket, output_widget, window_object):
         msg, msg_type = grp_recv(gsocket)
         msg = msg.strip('\n')
         now = datetime.datetime.now()
-        print "Received %s, %d" %(msg, now.microsecond)
+        print "Received %s, %.3f" %(msg, time.time())
         output_widget.insert(tk.END, msg + "\n")
         output_widget.see(tk.END)
 
