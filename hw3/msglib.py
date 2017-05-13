@@ -10,9 +10,12 @@ import socket
 import thread
 import select
 import time
+import datetime
 
 from packet_struct import *
 from multicast_module import *
+
+now = datetime.datetime.now()
 
 # ............................. <Variables> ............................. #
 
@@ -112,6 +115,7 @@ def grp_join(grp_ipaddr, grp_port, myid):
 
     grp_info_coordinator[grp_pair] = False
     grp_info_valid_messages[grp_pair] = {}
+    last_time_ACK_send[grp_pair] = 0
 
     # Create a list with the already connected users
     grp_info_members[grp_pair] = []
@@ -133,13 +137,6 @@ def grp_join(grp_ipaddr, grp_port, myid):
         grp_info_coordinator[grp_pair] = True
 
     buffers_lock.release()
-
-    # Start the threads only the first time
-    if (first_time):
-        thread.start_new_thread(listen_from_DirSvc, ())
-        thread.start_new_thread(listen_from_multicast, ())
-        thread.start_new_thread(send_to_multicast, ())
-        first_time = False
 
     # Try till you get a valid multicast socket
     grp_socket = -1
@@ -165,8 +162,6 @@ def grp_join(grp_ipaddr, grp_port, myid):
 
     missing_seq_nums[grp_pair] = []
 
-    last_time_ACK_send[grp_pair] = 0
-
     buffers_lock.release()
 
     recv_messages_lock.acquire()
@@ -184,6 +179,13 @@ def grp_join(grp_ipaddr, grp_port, myid):
     acked_messages_lock.acquire()
     acked_messages[grp_pair] = {}
     acked_messages_lock.release()
+
+    # Start the threads only the first time
+    if (first_time):
+        thread.start_new_thread(listen_from_DirSvc, ())
+        thread.start_new_thread(listen_from_multicast, ())
+        thread.start_new_thread(send_to_multicast, ())
+        first_time = False
 
     return grp_socket
 
