@@ -79,7 +79,7 @@ def send_worker(gsocket, input_widget):
         gsocket_variables_lock.acquire()
         if (gsocket_variables[gsocket] is True):
             gsocket_variables_lock.release()
-            print 'Sender done!'
+            # print 'Sender done!'
             break
         gsocket_variables_lock.release()
 
@@ -106,7 +106,7 @@ def receive_worker(gsocket, output_widget, window_object):
 
         # edw tha allaxi to ti mnm epistrefi! Einai mnm h bgainw apo group chat!
         if (msg_type == I_DISCONNECTED):
-            print 'Receiver done'
+            # print 'Receiver done'
             time.sleep(2)
             window_object.destroy()
             break

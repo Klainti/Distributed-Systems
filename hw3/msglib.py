@@ -552,9 +552,9 @@ def listen_from_multicast():
                             acked_messages[grp_pair][seq_num] = send_messages[grp_pair][i][0]
                             acked_messages_lock.release()
 
-                            RESEND_TIMEOUT = 1.5*(RESEND_TIMEOUT + time.time() - send_messages[grp_pair][i][2])/2
+                            RESEND_TIMEOUT = 2*(time.time() - send_messages[grp_pair][i][2])
 
-                            print "Set RESEND_TIMEOUT to", RESEND_TIMEOUT
+                            # print "Set RESEND_TIMEOUT to", RESEND_TIMEOUT
 
                             del send_messages[grp_pair][i]
 
