@@ -11,7 +11,7 @@ udp_socket = None
 def init_connection():
 
     global udp_socket
-    
+
     # create socket
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
