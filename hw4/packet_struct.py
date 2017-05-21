@@ -49,9 +49,9 @@ def construct_write_packet(req_number, fd, pos, cur_num, total, data):
 
 # Encode the packet for the read request
 def construct_read_packet(req_number, fd, pos, length):
-    if (size <= 0):
+    if (length <= 0):
         raise LengthError, "Unacceptable Length"
-    return struct.pack(READ_REQ_ENCODING, READ_REQ, req_number, fd, length)
+    return struct.pack(READ_REQ_ENCODING, READ_REQ, req_number, fd, pos, length)
 
 
 # Encode the packet for the read request

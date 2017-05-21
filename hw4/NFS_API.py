@@ -68,13 +68,15 @@ def mynfs_open(fname, create, cacheFreshnessT):
 """Read n bytes from fd starting from position fd_pos[fd]"""
 def mynfs_read(fd, n):
 
+    global req_num
+
     variables_lock.acquire()
     pos = fd_pos[fd]
     req_num += 1
     cur_req_num = req_num
     variables_lock.release()
 
-    packet = construct_read_packet(cur_req_num, fd, pos, n)
+    packet = packet_struct.construct_read_packet(cur_req_num, fd, pos, n)
     udp_socket.sendto(packet, SERVER_ADDR)
 
     # Wait here for reply
