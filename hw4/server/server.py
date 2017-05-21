@@ -1,5 +1,7 @@
 """Service support network file system."""
 
+import sys
+sys.path.append('../../hw4')
 
 import socket
 import struct
@@ -71,14 +73,19 @@ def receive_from_clients():
     while(1):
         packet, client_info = udp_socket.recvfrom(1024)
 
+        print "Got packet"
+
         # Get only the type of the request!
         type_of_req = struct.unpack_from('!i', packet[:4])[0]
 
         if (type_of_req == packet_struct.OPEN_REQ):
+            print "Got open request"
             serve_open_request(packet, client_info)
         elif (type_of_req == packet_struct.READ_REQ):
+            print "Got read request"
             pass
         elif (type_of_req == packet_struct.WRITE_REQ):
+            print "Got write request"
             pass
         else:
             pass

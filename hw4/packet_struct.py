@@ -20,14 +20,14 @@ WRITE_REQ = 3
 
 # ENCODINGS
 
-# type_of_req,Req_number, create/open, File name
+# Type, req_number, create/open, File name
 OPEN_ENCODING = '!iii' + str(NAME_LENGTH) + 's'
 
-# type_of_req,Req_number, Fd, starting pos, current_number_of_packet, total_packets, size_of_data, data
+# Type, req_number, Fd, starting pos, current_number_of_packet, total_packets, size_of_data, data
 WRITE_ENCODING = '!iiiiiii' + str(BLOCK_SIZE) + 's'
 
-# type_of_req,Req_number, Fd, length
-READ_REQ_ENCODING = '!iiii'
+# Type, req_number, Fd, pos, length
+READ_REQ_ENCODING = '!iiiii'
 
 # ACK for request with Req_number
 ACK_ENCODING = '!i'
@@ -48,7 +48,7 @@ def construct_write_packet(req_number, fd, pos, cur_num, total, data):
 
 
 # Encode the packet for the read request
-def construct_read_packet(req_number, fd, length):
+def construct_read_packet(req_number, fd, pos, length):
     if (size <= 0):
         raise LengthError, "Unacceptable Length"
     return struct.pack(READ_REQ_ENCODING, READ_REQ, req_number, fd, length)

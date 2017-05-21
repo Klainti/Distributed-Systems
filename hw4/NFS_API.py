@@ -9,12 +9,13 @@ import packet_struct
 SERVER_ADDR = ()
 udp_socket = None
 
-# counter for requests!
-seq_num_lock = threading.Lock()
-seq_num = 0
 
-buffers_lock = threading.Lock()
+
+variables_lock = threading.Lock()
 fd_pos = {}
+
+# counter for requests!
+req_num = 0
 
 
 """Initialize connection with server"""
@@ -43,30 +44,47 @@ def mynfs_setSrv(ipaddr, port):
 """Send Open request"""
 def mynfs_open(fname, create, cacheFreshnessT):
 
-    global udp_socket, seq_num
+    global udp_socket, req_num
 
-    seq_num_lock.acquire()
-    seq_num += 1
-    cur_seq_num = seq_num
-    seq_num_lock.release()
+    variables_lock.acquire()
+    req_num += 1
+    cur_req_num = req_num
+    variables_lock.release()
 
     # create and send the open request!
-    packet_req = packet_struct.construct_open_packet(cur_seq_num, create, fname)
+    packet_req = packet_struct.construct_open_packet(cur_req_num, create, fname)
     udp_socket.sendto(packet_req, SERVER_ADDR)
 
     # wait for reply (JUST THE FD!)
     fd = struct.unpack('!i', udp_socket.recv(4))[0]
 
-    buffers_lock.acquire()
+    variables_lock.acquire()
     fd_pos[fd] = 0
-    buffers_lock.release()
+    variables_lock.release()
 
     return fd
+
+
+"""Read n bytes from fd starting from position fd_pos[fd]"""
+def mynfs_read(fd, n):
+
+    variables_lock.acquire()
+    pos = fd_pos[fd]
+    req_num += 1
+    cur_req_num = req_num
+    variables_lock.release()
+
+    packet = construct_read_packet(cur_req_num, fd, pos, n)
+    udp_socket.sendto(packet, SERVER_ADDR)
+
+    # Wait here for reply
+    # Update fd_pos
+    # Return data
 
 
 """Change pointer's position in fd"""
 def mynfs_seek(fd, pos):
 
-    buffers_lock.acquire()
+    variables_lock.acquire()
     fd_pos[fd] = pos
-    buffers_lock.release()
+    variables_lock.release()
