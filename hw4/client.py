@@ -5,4 +5,5 @@ ipaddr = raw_input("Give server ip:")
 port = int(raw_input("Give server port: "))
 NFS_API.mynfs_setSrv(ipaddr, port)
 
-NFS_API.udp_socket.sendto("HELLO", NFS_API.SERVER_ADDR)
+fd = NFS_API.mynfs_open('text.txt', 0, 0)
+print fd
