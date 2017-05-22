@@ -31,7 +31,7 @@ def update_timeout(new_time):
     sum_time += new_time
     times += 1
     if (times >= 10):
-        avg_time = round(float(sum_time/times), 4)
+        avg_time = max(0.003, round(float(sum_time/times), 4))
         print "AVG TIME: {}".format(avg_time)
         udp_socket.settimeout(avg_time)
         sum_time = 0
