@@ -31,7 +31,7 @@ def update_timeout(new_time):
     sum_time += new_time
     times += 1
     if (times >= 10):
-        avg_time = round(float(sum_time/times), 4)*10
+        avg_time = round(float(sum_time/times), 4)
         print "AVG TIME: {}".format(avg_time)
         udp_socket.settimeout(avg_time)
         sum_time = 0
@@ -107,14 +107,27 @@ def mynfs_read(fd, n):
     cur_req_num = req_num
     variables_lock.release()
 
-    packet = packet_struct.construct_read_packet(cur_req_num, fd, pos, n)
-    udp_socket.sendto(packet, SERVER_ADDR)
+    packet_req = packet_struct.construct_read_packet(cur_req_num, fd, pos, n)
 
-    # Wait here for reply
-    # Update fd_pos
-    # Return data
+    # try to send the read request!
+    while(1):
+        send_time = time.time()
+        udp_socket.sendto(packet_req, SERVER_ADDR)
 
+        try:
 
+            # wait for reply
+            reply_packet = udp_socket.recv(1024)
+            buf = struct.unpack('!1024s', reply_packet)[0].strip('\0')
+            rec_time = time.time()
+            update_timeout(rec_time-send_time)
+            break
+        except socket.timeout:
+            rec_time = time.time()
+            update_timeout(rec_time-send_time)
+            print 'Server failed to read a file. Try again!'
+
+    return (buf, len(buf))
 """Change pointer's position in fd"""
 def mynfs_seek(fd, pos):
 
