@@ -42,7 +42,7 @@ def serve_open_request(packet, client_info):
     global c_fd, fd_dict, udp_socket
 
     #unpack packet
-    req_number, create_open, filename = packet_struct.deconstruct_packet(packet_struct.OPEN_ENCODING, packet)
+    req_number, create_open, filename = packet_struct.deconstruct_packet(packet_struct.OPEN_ENCODING, packet)[1:]
 
     filename = filename.strip('\0')
 
@@ -69,7 +69,7 @@ def serve_read_request(packet, client_info):
 
     global udp_socket
     # unpack packet
-    req_number, fd, pos, length = packet_struct.deconstruct_packet(packet_struct.READ_REQ_ENCODING, packet)
+    req_number, fd, pos, length = packet_struct.deconstruct_packet(packet_struct.READ_REQ_ENCODING, packet)[1:]
 
     local_fd = fd_dict[fd]
 
@@ -84,7 +84,7 @@ def serve_read_request(packet, client_info):
     for i in xrange(0, total_reads):
         data = local_fd.read(length)
 
-        reply_packet = struct.pack('!1024s', data)
+        reply_packet =packet_struct.construct_read_rep_packet(req_number, i, total_reads, data)
 
         udp_socket.sendto(reply_packet, client_info)
 
@@ -96,7 +96,7 @@ def serve_write_request(packet, client_info):
     global udp_socket
 
     print 'packet len: {}'.format(len(packet))
-    req_number, fd, pos, current_number_of_packet, total_packets, size_of_data, data = packet_struct.deconstruct_packet(packet_struct.WRITE_ENCODING, packet)
+    req_number, fd, pos, current_number_of_packet, total_packets, size_of_data, data = packet_struct.deconstruct_packet(packet_struct.WRITE_ENCODING, packet)[1:]
     data = data.strip('\0')
 
     local_fd = fd_dict[fd]

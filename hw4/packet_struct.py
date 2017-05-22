@@ -29,9 +29,16 @@ WRITE_ENCODING = '!iiiiiii' + str(BLOCK_SIZE) + 's'
 # Type, req_number, Fd, pos, length
 READ_REQ_ENCODING = '!iiiii'
 
+
+# req_number, number_of_packet, total_packets, size_of_data, data
+READ_REP_ENCODING = '!iiii' + str(BLOCK_SIZE) + 's'
+
+
 # ACK for request with Req_number
 ACK_ENCODING = '!i'
 
+
+# CLIENT FUNCTIONS
 
 # Encode the packet for the create request
 def construct_open_packet(req_number, create, name):
@@ -54,11 +61,20 @@ def construct_read_packet(req_number, fd, pos, length):
     return struct.pack(READ_REQ_ENCODING, READ_REQ, req_number, fd, pos, length)
 
 
+# SERVER FUNCTIONS
+
+# Encode the packet for the read request
+def construct_read_rep_packet(req_number, cur_num, total, data):
+    return struct.pack(READ_REP_ENCODING, req_number, cur_num, total, len(data), data)
+
+
 # Encode the packet for the read request
 def construct_ACK(req_number):
     return struct.pack(ACK_ENCODING, req_number)
 
 
+# COMMON FUNCTION
+
 # Deconstruct a packet
 def deconstruct_packet(decode, packet):
-    return struct.unpack(decode, packet)[1:]
+    return struct.unpack(decode, packet)
