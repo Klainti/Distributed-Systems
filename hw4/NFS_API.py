@@ -2,12 +2,18 @@
 
 import socket
 import struct
+import time
 import threading
 import packet_struct
 
 # Global variables!
 SERVER_ADDR = ()
 udp_socket = None
+
+# INIT VALUE OF TIMEOUT (ms)
+TIMEOUT = 0.003
+sum_time = 0
+times = 0
 
 
 
@@ -17,6 +23,19 @@ fd_pos = {}
 # counter for requests!
 req_num = 0
 
+"""Update timeout of the udp socket"""
+def update_timeout(new_time):
+
+    global udp_socket, sum_time, times
+
+    sum_time += new_time
+    times += 1
+    if (times >= 10):
+        avg_time = round(float(sum_time/times), 4)*10
+        print "AVG TIME: {}".format(avg_time)
+        udp_socket.settimeout(avg_time)
+        sum_time = 0
+        times = 0
 
 """Initialize connection with server"""
 def init_connection():
@@ -25,6 +44,7 @@ def init_connection():
 
     # create socket
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp_socket.settimeout(0.003)
 
     # start nfs threads!
 
@@ -53,10 +73,21 @@ def mynfs_open(fname, create, cacheFreshnessT):
 
     # create and send the open request!
     packet_req = packet_struct.construct_open_packet(cur_req_num, create, fname)
-    udp_socket.sendto(packet_req, SERVER_ADDR)
 
-    # wait for reply (JUST THE FD!)
-    fd = struct.unpack('!i', udp_socket.recv(4))[0]
+    while(1):
+        send_time = time.time()
+        udp_socket.sendto(packet_req, SERVER_ADDR)
+
+        try:
+            # wait for reply (JUST THE FD!)
+            fd = struct.unpack('!i', udp_socket.recv(4))[0]
+            rec_time = time.time()
+            update_timeout(rec_time-send_time)
+            break
+        except socket.timeout:
+            rec_time = time.time()
+            update_timeout(rec_time-send_time)
+            print 'Server failed to open/create a file. Try again!'
 
     variables_lock.acquire()
     fd_pos[fd] = 0
