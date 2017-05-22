@@ -139,7 +139,7 @@ def mynfs_read(fd, n):
 
     missing_packets = [i for i in xrange(total)]
     received_data[cur_num] = data
-    print "Received", data, "with number", cur_num
+    print "Received", data, "with number", cur_num, len(data)
     missing_packets.remove(cur_num)
 
     print "Gonna wait for other", total-1, "packets"
@@ -154,7 +154,7 @@ def mynfs_read(fd, n):
                 data = data.strip('\0')
                 received_data[cur_num] = data
                 missing_packets.remove(cur_num)
-                print "Received", data, "with number", cur_num
+                print "Received", data, "with number", cur_num, len(data)
             rec_time = time.time()
             update_timeout(rec_time-send_time)
         except socket.timeout:
@@ -207,9 +207,11 @@ def mynfs_read(fd, n):
 
 
 """Write n bytes to fd starting from position fd_pos[fd]"""
-def mynfs_write(fd, buf, n):
+def mynfs_write(fd, buf):
 
     global req_num
+
+    n = len(buf)
 
     variables_lock.acquire()
     pos = fd_pos[fd]
@@ -238,7 +240,10 @@ def mynfs_write(fd, buf, n):
             print 'Server failed to read a file. Try again!'
 
     # update pos of fd
+    variables_lock.acquire()
     fd_pos[fd] += n
+    variables_lock.release()
+
     return n
 
 """Change pointer's position in fd"""

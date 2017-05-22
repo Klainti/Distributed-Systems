@@ -82,7 +82,9 @@ def serve_read_request(packet, client_info):
         total_reads += 1
 
     for i in xrange(0, total_reads):
-        data = local_fd.read(length)
+        data = local_fd.read(packet_struct.BLOCK_SIZE)
+
+        print "Send", data, i, "/", total_reads, len(data)
 
         reply_packet =packet_struct.construct_read_rep_packet(req_number, i, total_reads, data)
 
@@ -103,6 +105,8 @@ def serve_write_request(packet, client_info):
 
     # seek relative to the current position
     local_fd.seek(pos, 0)
+
+    print "Write at", pos, size_of_data
 
     local_fd.write(data)
     local_fd.flush()
