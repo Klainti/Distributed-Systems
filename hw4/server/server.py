@@ -63,6 +63,7 @@ def serve_open_request(packet, client_info):
     # notify client with file descriptor
     udp_socket.sendto(struct.pack('!i', c_fd), client_info)
     return 1
+
 """Serves a read request"""
 def serve_read_request(packet, client_info):
 
@@ -73,11 +74,34 @@ def serve_read_request(packet, client_info):
     local_fd = fd_dict[fd]
 
     # seek relative to the current position
-    local_fd.seek(pos, 1)
+    local_fd.seek(pos, 0)
 
     data = local_fd.read(length)
 
     reply_packet = struct.pack('!1024s', data)
+
+    udp_socket.sendto(reply_packet, client_info)
+
+    return 1
+
+"""Serves a write request"""
+def serve_write_request(packet, client_info):
+
+    global udp_socket
+
+    print 'packet len: {}'.format(len(packet))
+    req_number, fd, pos, current_number_of_packet, total_packets, size_of_data, data = packet_struct.deconstruct_packet(packet_struct.WRITE_ENCODING, packet)
+    data = data.strip('\0')
+
+    local_fd = fd_dict[fd]
+
+    # seek relative to the current position
+    local_fd.seek(pos, 0)
+
+    local_fd.write(data)
+    local_fd.flush()
+
+    reply_packet = struct.pack('!i', req_number)
 
     udp_socket.sendto(reply_packet, client_info)
 
@@ -100,10 +124,9 @@ def receive_from_clients():
         elif (type_of_req == packet_struct.READ_REQ):
             print "Got read request"
             serve_read_request(packet, client_info)
-            pass
         elif (type_of_req == packet_struct.WRITE_REQ):
             print "Got write request"
-            pass
+            serve_write_request(packet, client_info)
         else:
             pass
 

@@ -127,7 +127,44 @@ def mynfs_read(fd, n):
             update_timeout(rec_time-send_time)
             print 'Server failed to read a file. Try again!'
 
+    fd_pos[fd] += n
     return (buf, len(buf))
+
+"""Write n bytes to fd starting from position fd_pos[fd]"""
+def mynfs_write(fd, buf, n):
+
+    global req_num
+
+    variables_lock.acquire()
+    pos = fd_pos[fd]
+    req_num += 1
+    cur_req_num = req_num
+    variables_lock.release()
+
+    packet_req = packet_struct.construct_write_packet(cur_req_num, fd, pos, cur_req_num, 1, buf)
+
+    # try to send the write request!
+    while(1):
+        send_time = time.time()
+        udp_socket.sendto(packet_req, SERVER_ADDR)
+
+        try:
+
+            # wait for reply
+            reply_packet = struct.unpack('!i', udp_socket.recv(4))[0]
+            print 'Got ack: {} for write request {}'.format(reply_packet, cur_req_num)
+            rec_time = time.time()
+            update_timeout(rec_time-send_time)
+            break
+        except socket.timeout:
+            rec_time = time.time()
+            update_timeout(rec_time-send_time)
+            print 'Server failed to read a file. Try again!'
+
+    # update pos of fd
+    fd_pos[fd] += n
+    return n
+
 """Change pointer's position in fd"""
 def mynfs_seek(fd, pos):
 
