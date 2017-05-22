@@ -76,11 +76,17 @@ def serve_read_request(packet, client_info):
     # seek relative to the current position
     local_fd.seek(pos, 0)
 
-    data = local_fd.read(length)
+    # get total reads!
+    total_reads = int(length/1024)
+    if (length % 1024 != 0):
+        total_reads += 1
 
-    reply_packet = struct.pack('!1024s', data)
+    for i in xrange(0, total_reads):
+        data = local_fd.read(length)
 
-    udp_socket.sendto(reply_packet, client_info)
+        reply_packet = struct.pack('!1024s', data)
+
+        udp_socket.sendto(reply_packet, client_info)
 
     return 1
 
