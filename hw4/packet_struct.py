@@ -10,7 +10,7 @@ class LengthError(Exception):
 
 
 # CONSTANTS
-BLOCK_SIZE = 1024
+BLOCK_SIZE = 989
 
 NAME_LENGTH = 150
 
