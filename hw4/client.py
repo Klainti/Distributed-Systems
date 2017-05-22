@@ -6,8 +6,14 @@ port = int(raw_input("Give server port: "))
 NFS_API.mynfs_setSrv(ipaddr, port)
 
 print "Send open request"
-fd = NFS_API.mynfs_open('text.txt', 0, 0)
-print "Send read request"
-NFS_API.mynfs_read(fd, 10)
+fd = NFS_API.mynfs_open('text1.txt', 0, 0)
+print "Return fd: {}".format(fd)
 
-print fd
+print "Send write request"
+n = NFS_API.mynfs_write(fd, 'hello world', 11)
+
+NFS_API.mynfs_seek(fd, 0)
+
+print "Send read request"
+buf, n = NFS_API.mynfs_read(fd, 11)
+print "got msg: {} from read request".format("'"+buf+"'")
