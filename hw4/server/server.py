@@ -77,14 +77,14 @@ def serve_read_request(packet, client_info):
     local_fd.seek(pos, 0)
 
     # get total reads!
-    total_reads = int(length/1024)
-    if (length % 1024 != 0):
+    total_reads = int(length/packet_struct.BLOCK_SIZE)
+    if (length % packet_struct.BLOCK_SIZE != 0):
         total_reads += 1
 
     for i in xrange(0, total_reads):
         data = local_fd.read(packet_struct.BLOCK_SIZE)
 
-        print "Send", data, i, "/", total_reads, len(data)
+        print "Send", data, i+1, "/", total_reads, len(data)
 
         reply_packet =packet_struct.construct_read_rep_packet(req_number, i, total_reads, data)
 

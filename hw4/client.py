@@ -20,3 +20,8 @@ print "Send read request"
 buf = NFS_API.mynfs_read(fd, 10000)
 print "got msg: {} from read request".format("'"+buf+"'")
 print len(buf)
+
+print "Send read request"
+buf = NFS_API.mynfs_read(fd, 10)
+print "got msg: {} from read request".format("'"+buf+"'")
+print len(buf)

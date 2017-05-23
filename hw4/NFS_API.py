@@ -109,13 +109,17 @@ def mynfs_read(fd, n):
     cur_req_num = req_num
     variables_lock.release()
 
+    new_pos = pos/packet_struct.BLOCK_SIZE * packet_struct.BLOCK_SIZE
+    offset = new_pos-pos
+
+
     size = max(1, n/packet_struct.BLOCK_SIZE) * packet_struct.BLOCK_SIZE
     if (size < n):
         size += packet_struct.BLOCK_SIZE
 
-    print "Gonna send read request for", size
+    print "Gonna send read request for", size, "from", new_pos
 
-    packet_req = packet_struct.construct_read_packet(cur_req_num, fd, pos, size)
+    packet_req = packet_struct.construct_read_packet(cur_req_num, fd, new_pos, size)
 
     # try to send the read request!
     while(1):
@@ -203,7 +207,12 @@ def mynfs_read(fd, n):
     for i in xrange (total):
         buf += received_data[i]
 
-    return buf[:n]
+    variables_lock.acquire()
+    fd_pos[fd] += n
+    print "Set fd_pos to", fd_pos[fd]
+    variables_lock.release()
+
+    return buf[offset:offset+n]
 
 
 """Write n bytes to fd starting from position fd_pos[fd]"""
