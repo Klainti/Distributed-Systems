@@ -111,7 +111,7 @@ def serve_write_request(packet, client_info):
     local_fd.write(data)
     local_fd.flush()
 
-    reply_packet = struct.pack('!i', req_number)
+    reply_packet = struct.pack('!ii', req_number, current_number_of_packet)
 
     udp_socket.sendto(reply_packet, client_info)
 

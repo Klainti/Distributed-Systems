@@ -10,9 +10,8 @@ fd = NFS_API.mynfs_open('text1.txt', 0, 0)
 print "Return fd: {}".format(fd)
 
 
-for i in xrange (100):
-    print "Send write request"
-    n = NFS_API.mynfs_write(fd, 'hello world'*40)
+print "Send write request"
+n = NFS_API.mynfs_write(fd, 'hello world'*400)
 
 NFS_API.mynfs_seek(fd, 0)
 

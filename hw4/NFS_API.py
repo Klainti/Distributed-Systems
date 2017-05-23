@@ -109,16 +109,18 @@ def mynfs_read(fd, n):
     cur_req_num = req_num
     variables_lock.release()
 
+    # Calculate the pos of the request based on BLOCK_SIZE
     new_pos = pos/packet_struct.BLOCK_SIZE * packet_struct.BLOCK_SIZE
-    offset = new_pos-pos
+    offset = pos-new_pos
 
-
+    # Calculate the size of the request based on BLOCK_SIZE
     size = max(1, n/packet_struct.BLOCK_SIZE) * packet_struct.BLOCK_SIZE
     if (size < n):
         size += packet_struct.BLOCK_SIZE
 
     print "Gonna send read request for", size, "from", new_pos
 
+    # Construct packet
     packet_req = packet_struct.construct_read_packet(cur_req_num, fd, new_pos, size)
 
     # try to send the read request!
@@ -148,13 +150,14 @@ def mynfs_read(fd, n):
 
     print "Gonna wait for other", total-1, "packets"
 
+    # Try to receive the remaining packets of the reply
     for i in xrange(total-1):
 
         try:
             # wait for reply
             reply_packet = udp_socket.recv(1024)
             req_number, cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
-            if (cur_num not in received_data):
+            if (req_number == cur_req_num and cur_num not in received_data):
                 data = data.strip('\0')
                 received_data[cur_num] = data
                 missing_packets.remove(cur_num)
@@ -169,26 +172,26 @@ def mynfs_read(fd, n):
     print "Missing_packets: ", missing_packets
 
     # Send new read requests for missing packets
-    pos = 0
+    p = 0
 
     while (missing_packets != []):
 
         size = packet_struct.BLOCK_SIZE
 
         start = pos
-        pos += 1
+        p += 1
 
         # If missing sequential packets, send one big request
-        while (pos < len(missing_packets) and missing_packets[pos] == missing_packets[pos-1]):
+        while (p < len(missing_packets) and missing_packets[p] == missing_packets[p-1]):
             size += packet_struct.BLOCK_SIZE
-            pos += 1
+            p += 1
 
         data = mynfs_read(fd, size)
 
         piece = 0
 
         s = missing_packets[start]
-        e = missing_packets[pos]
+        e = missing_packets[p]
 
         # Update received_data
         for i in xrange(s, e):
@@ -199,7 +202,7 @@ def mynfs_read(fd, n):
         print "Missing_packets: ", missing_packets
 
     print "Received all parts"
-    print received_data
+    print received_data.keys()
 
     # Construct reply
     buf = ''
@@ -207,12 +210,15 @@ def mynfs_read(fd, n):
     for i in xrange (total):
         buf += received_data[i]
 
+    buf = buf[offset:offset+n]
+
+    # Update pointer
     variables_lock.acquire()
-    fd_pos[fd] += n
+    fd_pos[fd] += len(buf)
     print "Set fd_pos to", fd_pos[fd]
     variables_lock.release()
 
-    return buf[offset:offset+n]
+    return buf
 
 
 """Write n bytes to fd starting from position fd_pos[fd]"""
@@ -228,25 +234,50 @@ def mynfs_write(fd, buf):
     cur_req_num = req_num
     variables_lock.release()
 
-    packet_req = packet_struct.construct_write_packet(cur_req_num, fd, pos, cur_req_num, 1, buf)
+    packets = []
 
-    # try to send the write request!
-    while(1):
-        send_time = time.time()
+    not_acked = []
+
+    # Calculate the total number of packets need to be send
+    num_of_packets = n/packet_struct.BLOCK_SIZE
+    if (n%packet_struct.BLOCK_SIZE != 0):
+        num_of_packets += 1
+
+    for i in xrange(num_of_packets):
+        packet_req = packet_struct.construct_write_packet(cur_req_num, fd, pos + i*packet_struct.BLOCK_SIZE, i, num_of_packets, buf[i*packet_struct.BLOCK_SIZE: (i+1)*packet_struct.BLOCK_SIZE])
+        packets.append(packet_req)
+        print "Append/Send packet with data from", i*packet_struct.BLOCK_SIZE, "to", (i+1)*packet_struct.BLOCK_SIZE, "and pos", pos + i*packet_struct.BLOCK_SIZE
         udp_socket.sendto(packet_req, SERVER_ADDR)
 
-        try:
+    send_time = time.time()
 
+    not_acked = [i for i in xrange(num_of_packets)]
+
+    p = 0
+
+    # try to send the write request!
+    while(not_acked != []):
+
+        try:
             # wait for reply
-            reply_packet = struct.unpack('!i', udp_socket.recv(4))[0]
-            print 'Got ack: {} for write request {}'.format(reply_packet, cur_req_num)
+            req_num, packet_num = struct.unpack('!ii', udp_socket.recv(8))
+            print 'Got ack: {} for write request {}'.format(packet_num, cur_req_num)
             rec_time = time.time()
             update_timeout(rec_time-send_time)
-            break
+            not_acked.remove(packet_num)
         except socket.timeout:
+
             rec_time = time.time()
             update_timeout(rec_time-send_time)
-            print 'Server failed to read a file. Try again!'
+
+            print 'Not received ACK. Send packet', not_acked[p]
+
+            udp_socket.sendto(packets[not_acked[p]], SERVER_ADDR)
+            p = (p+1)%len(not_acked)
+            send_time = time.time()
+
+
+
 
     # update pos of fd
     variables_lock.acquire()
@@ -254,6 +285,8 @@ def mynfs_write(fd, buf):
     variables_lock.release()
 
     return n
+
+
 
 """Change pointer's position in fd"""
 def mynfs_seek(fd, pos):
