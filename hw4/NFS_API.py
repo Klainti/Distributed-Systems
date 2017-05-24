@@ -75,6 +75,8 @@ def mynfs_open(fname, create, cacheFreshnessT):
     packet_req = packet_struct.construct_open_packet(cur_req_num, create, fname)
 
     while(1):
+
+        print "Send open request"
         send_time = time.time()
         udp_socket.sendto(packet_req, SERVER_ADDR)
 
@@ -87,7 +89,7 @@ def mynfs_open(fname, create, cacheFreshnessT):
         except socket.timeout:
             rec_time = time.time()
             update_timeout(rec_time-send_time)
-            print 'Server failed to open/create a file. Try again!'
+            print 'Timeout'
 
     variables_lock.acquire()
     fd_pos[fd] = 0
@@ -125,6 +127,7 @@ def mynfs_read(fd, n):
 
     # try to send the read request!
     while(1):
+
         send_time = time.time()
         udp_socket.sendto(packet_req, SERVER_ADDR)
 
@@ -141,11 +144,11 @@ def mynfs_read(fd, n):
         except socket.timeout:
             rec_time = time.time()
             update_timeout(rec_time-send_time)
-            print 'Server failed to read a file. Try again!'
+            print 'Timeout'
 
     missing_packets = [i for i in xrange(total)]
     received_data[cur_num] = data
-    print "Received", data, "with number", cur_num, len(data)
+    print "Received data with number", cur_num, len(data)
     missing_packets.remove(cur_num)
 
     print "Gonna wait for other", total-1, "packets"
@@ -161,19 +164,20 @@ def mynfs_read(fd, n):
                 data = data.strip('\0')
                 received_data[cur_num] = data
                 missing_packets.remove(cur_num)
-                print "Received", data, "with number", cur_num, len(data)
+                print "Received data with number", cur_num, len(data)
             rec_time = time.time()
             update_timeout(rec_time-send_time)
         except socket.timeout:
             rec_time = time.time()
             update_timeout(rec_time-send_time)
-            print 'Server failed to read a file. Try again!'
+            print 'Timeout'
 
     print "Missing_packets: ", missing_packets
 
     # Send new read requests for missing packets
     p = 0
 
+    print "Retry for", len(missing_packets), "packets"
     while (missing_packets != []):
 
         size = packet_struct.BLOCK_SIZE

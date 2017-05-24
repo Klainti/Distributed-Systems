@@ -84,7 +84,7 @@ def serve_read_request(packet, client_info):
     for i in xrange(0, total_reads):
         data = local_fd.read(packet_struct.BLOCK_SIZE)
 
-        print "Send", data, i+1, "/", total_reads, len(data)
+        print "Send data", i+1, "/", total_reads, len(data)
 
         reply_packet =packet_struct.construct_read_rep_packet(req_number, i, total_reads, data)
 
