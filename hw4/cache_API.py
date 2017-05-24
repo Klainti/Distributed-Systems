@@ -28,6 +28,8 @@ def insert_block(fd, position, data, freshnessT):
         # insert the new block
         cache_mem.append(cache_mem)
 
+    print cache_mem
+
 
 """Remove a block from memory. The oldest!"""
 def remove_block():

@@ -88,7 +88,8 @@ def serve_read_request(packet, client_info):
 
         reply_packet =packet_struct.construct_read_rep_packet(req_number, i, total_reads, data)
 
-        udp_socket.sendto(reply_packet, client_info)
+        if (i%3 == 0):
+            udp_socket.sendto(reply_packet, client_info)
 
     return 1
 

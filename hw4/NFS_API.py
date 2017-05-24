@@ -4,7 +4,9 @@ import socket
 import struct
 import time
 import threading
+
 import packet_struct
+import cache_API
 
 # Global variables!
 SERVER_ADDR = ()
@@ -18,10 +20,15 @@ times = 0
 
 
 variables_lock = threading.Lock()
+
+# Pointer position for each file
 fd_pos = {}
 
 # counter for requests!
 req_num = 0
+
+# Freshness time for each file
+freshness = {}
 
 """Update timeout of the udp socket"""
 def update_timeout(new_time):
@@ -47,6 +54,127 @@ def init_connection():
     udp_socket.settimeout(0.003)
 
     # start nfs threads!
+
+
+"""
+    Internal function which send the read request and returns the data
+    pos and size must be a multiple o BLOCK_SIZE
+"""
+
+
+def send_read_and_receive_data(fd, pos, size):
+
+    global req_num
+
+    received_data = {}
+
+    variables_lock.acquire()
+    cur_req_num = req_num
+    req_num += 1
+    variables_lock.release()
+
+
+    packet_req = packet_struct.construct_read_packet(cur_req_num, fd, pos, size)
+
+    # PHASE 1: Send the packet till you get the first reply packet
+    while(1):
+
+        # Send packet
+        send_time = time.time()
+        udp_socket.sendto(packet_req, SERVER_ADDR)
+
+        # Wait for reply
+        try:
+            reply_packet = udp_socket.recv(1024)
+            req_number, cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
+            if (req_number == cur_req_num):
+                data = data.strip('\0')
+                rec_time = time.time()
+                update_timeout(rec_time-send_time)
+                break
+        except socket.timeout:
+            rec_time = time.time()
+            update_timeout(rec_time-send_time)
+            print 'Timeout'
+
+
+    # Missing packets: so far all except the one we received
+    missing_packets = [i for i in xrange(total)]
+    missing_packets.remove(cur_num)
+
+    received_data[cur_num] = data
+
+    print "INTERNAL READ: Received data with number", cur_num, len(data)
+
+    # PHASE 2: Try to receive the remaining packets
+    print "INTERNAL READ: Gonna wait for other", total-1, "packets"
+
+    # Try to receive the remaining packets of the reply
+    for i in xrange(total-1):
+
+        try:
+            # wait for reply
+            reply_packet = udp_socket.recv(1024)
+            req_number, cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
+            if (req_number == cur_req_num and cur_num not in received_data):
+                data = data.strip('\0')
+                received_data[cur_num] = data
+                missing_packets.remove(cur_num)
+                print "INTERNAL READ: Received data with number", cur_num, len(data)
+            rec_time = time.time()
+            update_timeout(rec_time-send_time)
+        except socket.timeout:
+            rec_time = time.time()
+            update_timeout(rec_time-send_time)
+            print 'Timeout'
+
+    print "INTERNAL READ: Missing_packets: ", missing_packets
+
+    # PHASE 3: Retry for missing packets
+
+
+    print "INTERNAL READ: Retry for", len(missing_packets), "packets"
+
+    while (missing_packets != []):
+
+        size = packet_struct.BLOCK_SIZE
+
+        start = 0
+        end = 1
+
+        # If missing sequential packets, send one big request
+        while (end < len(missing_packets) and missing_packets[end] == missing_packets[end-1]+1):
+            size += packet_struct.BLOCK_SIZE
+            end += 1
+
+        print "INTERNAL READ: Send again for data from", pos + missing_packets[start]*packet_struct.BLOCK_SIZE, "with size", size
+        data = send_read_and_receive_data(fd, pos + missing_packets[start]*packet_struct.BLOCK_SIZE, size)
+
+        piece = 0
+
+        s = missing_packets[start]
+        e = missing_packets[end-1] + 1
+
+        # Update received_data
+        for i in xrange(s, e):
+            print "INTERNAL READ: Received part", i
+            received_data[i] = data[piece: piece + packet_struct.BLOCK_SIZE]
+            piece += packet_struct.BLOCK_SIZE
+            missing_packets.remove(i)
+
+        print "INTERNAL READ: Missing_packets: ", missing_packets
+
+    print "INTERNAL READ: Received all parts"
+    print received_data.keys()
+
+    buf = ''
+
+    for i in xrange (total):
+        buf += received_data[i]
+
+    return buf
+
+
 
 
 """Set SERVER INFO"""
@@ -93,6 +221,7 @@ def mynfs_open(fname, create, cacheFreshnessT):
 
     variables_lock.acquire()
     fd_pos[fd] = 0
+    freshness[fd] = cacheFreshnessT
     variables_lock.release()
 
     return fd
@@ -101,14 +230,15 @@ def mynfs_open(fname, create, cacheFreshnessT):
 """Read n bytes from fd starting from position fd_pos[fd]"""
 def mynfs_read(fd, n):
 
-    global req_num
-
     received_data = {}
+
+    in_cache = [-1]
+
+    # pos, size
+    requests = []
 
     variables_lock.acquire()
     pos = fd_pos[fd]
-    req_num += 1
-    cur_req_num = req_num
     variables_lock.release()
 
     # Calculate the pos of the request based on BLOCK_SIZE
@@ -120,98 +250,33 @@ def mynfs_read(fd, n):
     if (size < n):
         size += packet_struct.BLOCK_SIZE
 
-    print "Gonna send read request for", size, "from", new_pos
 
-    # Construct packet
-    packet_req = packet_struct.construct_read_packet(cur_req_num, fd, new_pos, size)
+    for i in xrange(size/packet_struct.BLOCK_SIZE):
+        found, data = cache_API.search_block(fd, new_pos+i*packet_struct.BLOCK_SIZE)
+        if (found == True):
+            received_data[i] = data
+            in_cache.append(i)
+    in_cache.append(size/packet_struct.BLOCK_SIZE)
 
-    # try to send the read request!
-    while(1):
+    print "Already in cache:", in_cache
 
-        send_time = time.time()
-        udp_socket.sendto(packet_req, SERVER_ADDR)
+    for i in xrange(1, len(in_cache)):
+        if (in_cache[i] > in_cache[i-1]+1):
+            requests.append([new_pos + packet_struct.BLOCK_SIZE*(in_cache[i-1]+1), (in_cache[i]-in_cache[i-1]-1)*packet_struct.BLOCK_SIZE])
 
-        try:
+    print "Requests", requests
 
-            # wait for reply
-            reply_packet = udp_socket.recv(1024)
-            req_number, cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
-            if (req_number == cur_req_num):
-                data = data.strip('\0')
-                rec_time = time.time()
-                update_timeout(rec_time-send_time)
-                break
-        except socket.timeout:
-            rec_time = time.time()
-            update_timeout(rec_time-send_time)
-            print 'Timeout'
+    for r in requests:
 
-    missing_packets = [i for i in xrange(total)]
-    received_data[cur_num] = data
-    print "Received data with number", cur_num, len(data)
-    missing_packets.remove(cur_num)
+        data = send_read_and_receive_data(fd, r[0], r[1])
 
-    print "Gonna wait for other", total-1, "packets"
-
-    # Try to receive the remaining packets of the reply
-    for i in xrange(total-1):
-
-        try:
-            # wait for reply
-            reply_packet = udp_socket.recv(1024)
-            req_number, cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
-            if (req_number == cur_req_num and cur_num not in received_data):
-                data = data.strip('\0')
-                received_data[cur_num] = data
-                missing_packets.remove(cur_num)
-                print "Received data with number", cur_num, len(data)
-            rec_time = time.time()
-            update_timeout(rec_time-send_time)
-        except socket.timeout:
-            rec_time = time.time()
-            update_timeout(rec_time-send_time)
-            print 'Timeout'
-
-    print "Missing_packets: ", missing_packets
-
-    # Send new read requests for missing packets
-    p = 0
-
-    print "Retry for", len(missing_packets), "packets"
-    while (missing_packets != []):
-
-        size = packet_struct.BLOCK_SIZE
-
-        start = pos
-        p += 1
-
-        # If missing sequential packets, send one big request
-        while (p < len(missing_packets) and missing_packets[p] == missing_packets[p-1]):
-            size += packet_struct.BLOCK_SIZE
-            p += 1
-
-        data = mynfs_read(fd, size)
-
-        piece = 0
-
-        s = missing_packets[start]
-        e = missing_packets[p]
-
-        # Update received_data
-        for i in xrange(s, e):
-            received_data[i] = data[piece: piece + packet_struct.BLOCK_SIZE]
-            piece += packet_struct.BLOCK_SIZE
-            missing_packets.remove(i)
-
-        print "Missing_packets: ", missing_packets
-
-    print "Received all parts"
-    print received_data.keys()
+        for i in xrange(r[1]/packet_struct.BLOCK_SIZE):
+            received_data[i + (r[0]-new_pos)/packet_struct.BLOCK_SIZE] = data[i*packet_struct.BLOCK_SIZE: (i+1)*packet_struct.BLOCK_SIZE]
 
     # Construct reply
     buf = ''
 
-    for i in xrange (total):
+    for i in xrange (size/packet_struct.BLOCK_SIZE):
         buf += received_data[i]
 
     buf = buf[offset:offset+n]
