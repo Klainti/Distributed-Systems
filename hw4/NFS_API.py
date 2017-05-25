@@ -41,6 +41,7 @@ def update_timeout(new_time):
         avg_time = max(0.003, round(float(sum_time/times), 4))
         print "AVG TIME: {}".format(avg_time)
         udp_socket.settimeout(avg_time)
+        TIMEOUT = avg_time
         sum_time = 0
         times = 0
 
@@ -251,11 +252,49 @@ def mynfs_read(fd, n):
         size += packet_struct.BLOCK_SIZE
 
 
+    # First check if the begining of the data requested are in cache
+    buf = ""
+    in_cache_size = 0
+    found, data = cache_API.search_block(fd, new_pos)
+
+    if (found):
+
+        print "Start in cache"
+
+        while (found and in_cache_size <= size):
+            buf += data
+            new_pos += packet_struct.BLOCK_SIZE
+            in_cache_size += packet_struct.BLOCK_SIZE
+
+            found, data = cache_API.search_block(fd, new_pos)
+
+        buf = buf[offset:offset+n]
+
+        # Update pointer
+        variables_lock.acquire()
+        fd_pos[fd] += len(buf)
+        print "Set fd_pos to", fd_pos[fd]
+        variables_lock.release()
+
+        return buf
+
+    # If the begining not in cache must send read request at server
+
+    # First check if any parts are in the cache
     for i in xrange(size/packet_struct.BLOCK_SIZE):
+
         found, data = cache_API.search_block(fd, new_pos+i*packet_struct.BLOCK_SIZE)
+
         if (found == True):
+
             received_data[i] = data
             in_cache.append(i)
+
+            # If length of data in cache are less tha BLOCK_SIZE => EOF
+            if (len(data) < packet_struct.BLOCK_SIZE):
+                size = (i+1)*packet_struct.BLOCK_SIZE
+                break
+
     in_cache.append(size/packet_struct.BLOCK_SIZE)
 
     print "Already in cache:", in_cache
@@ -266,6 +305,7 @@ def mynfs_read(fd, n):
 
     print "Requests", requests
 
+    # Then send requests for the missing parts
     for r in requests:
 
         data = send_read_and_receive_data(fd, r[0], r[1])
@@ -278,6 +318,8 @@ def mynfs_read(fd, n):
 
     for i in xrange (size/packet_struct.BLOCK_SIZE):
         buf += received_data[i]
+        if (received_data[i] != "" and i not in in_cache):
+            cache_API.insert_block(fd, new_pos + i*packet_struct.BLOCK_SIZE, received_data[i], freshness[fd])
 
     buf = buf[offset:offset+n]
 

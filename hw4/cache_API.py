@@ -1,7 +1,8 @@
 """API about handling cache memory"""
 
-
 import time
+
+import packet_struct
 
 # Global Variables
 cache_mem = []
@@ -27,8 +28,6 @@ def insert_block(fd, position, data, freshnessT):
 
         # insert the new block
         cache_mem.append(cache_mem)
-
-    print cache_mem
 
 
 """Remove a block from memory. The oldest!"""
@@ -58,7 +57,7 @@ def search_block(fd, position):
         # file that i am looking for
         if (mem[0] == fd):
             # the block i am looking for!
-            if (position >= mem[1] and position < mem[1] + 1024):
+            if (position >= mem[1] and position < mem[1] + packet_struct.BLOCK_SIZE):
 
                 # check the freshness
                 time_in_cache = time.time() - mem[3]
