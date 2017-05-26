@@ -349,6 +349,56 @@ def mynfs_write(fd, buf):
 
     not_acked = []
 
+    print "Write from", pos, len(buf)
+
+    # PHASE 1: Find the data before and after buf so len(total_data)%BLOCK_SIZE == 0
+
+    # Find the data before the write position in the current block
+    start_pos = pos/packet_struct.BLOCK_SIZE * packet_struct.BLOCK_SIZE
+    start_offset = pos - start_pos
+
+    print "Block starts at", start_pos
+
+    data = ""
+
+    if (start_offset > 0):
+        print "Get the previous data"
+        found, data = cache_API.search_block(fd, start_pos)
+        if (not found):
+            data = send_read_and_receive_data(fd, start_pos, packet_struct.BLOCK_SIZE)
+        data = data[:start_offset]
+
+    new_data = data + buf
+
+    # Find the data after the write in the last block
+    end_pos = pos + n
+
+    end_pos = end_pos/packet_struct.BLOCK_SIZE * packet_struct.BLOCK_SIZE
+    end_offset = pos + n - end_pos
+
+    data = ""
+
+    if (end_offset > 0):
+        print "Get the next data"
+        found, data = cache_API.search_block(fd, end_pos)
+        if (not found):
+            data = send_read_and_receive_data(fd, end_pos, packet_struct.BLOCK_SIZE)
+        data = data[end_offset:]
+
+    # New data to be writen + starting data + ending data
+    new_data = new_data + data
+
+    # Add new blocks to cache
+
+    plus = 0
+    if (len(new_data)%packet_struct.BLOCK_SIZE == 0):
+        plus = 1
+
+    for i in xrange(len(new_data)/packet_struct.BLOCK_SIZE + plus):
+        cache_API.insert_block(fd, start_pos + i*packet_struct.BLOCK_SIZE, new_data[i*packet_struct.BLOCK_SIZE: (i+1)*packet_struct.BLOCK_SIZE], freshness[fd])
+
+    # PHASE 2: Send changes over network
+
     # Calculate the total number of packets need to be send
     num_of_packets = n/packet_struct.BLOCK_SIZE
     if (n%packet_struct.BLOCK_SIZE != 0):
@@ -386,8 +436,6 @@ def mynfs_write(fd, buf):
             udp_socket.sendto(packets[not_acked[p]], SERVER_ADDR)
             p = (p+1)%len(not_acked)
             send_time = time.time()
-
-
 
 
     # update pos of fd

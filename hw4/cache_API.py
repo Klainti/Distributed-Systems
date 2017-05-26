@@ -29,6 +29,8 @@ def insert_block(fd, position, data, freshnessT):
         # insert the new block
         cache_mem[(fd, position)] = my_list
 
+    print "IN CACHE: ", cache_mem.keys() 
+
 
 """Remove a block from memory. The oldest!"""
 def remove_block():
