@@ -71,6 +71,8 @@ def serve_read_request(packet, client_info):
     # unpack packet
     req_number, fd, pos, length = packet_struct.deconstruct_packet(packet_struct.READ_REQ_ENCODING, packet)[1:]
 
+    data = []
+
     local_fd = fd_dict[fd]
 
     # seek relative to the current position
@@ -82,14 +84,23 @@ def serve_read_request(packet, client_info):
         total_reads += 1
 
     for i in xrange(0, total_reads):
-        data = local_fd.read(packet_struct.BLOCK_SIZE)
+        buf = local_fd.read(packet_struct.BLOCK_SIZE)
+        data.append(buf)
+        if (len(buf) == 0):
+            break
 
-        print "Send data", i+1, "/", total_reads, len(data)
 
-        reply_packet =packet_struct.construct_read_rep_packet(req_number, i, total_reads, data)
 
-        if (i%3 == 0):
-            udp_socket.sendto(reply_packet, client_info)
+    total_reads = len(data)
+
+    for i in xrange(total_reads):
+
+        print "Send data", i+1, "/", total_reads, len(data[i])
+
+        reply_packet =packet_struct.construct_read_rep_packet(req_number, i, total_reads, data[i])
+
+        #if (i%2 == 0):
+        udp_socket.sendto(reply_packet, client_info)
 
     return 1
 
