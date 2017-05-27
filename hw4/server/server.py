@@ -6,6 +6,8 @@ sys.path.append('../../hw4')
 import socket
 import struct
 import os
+import threading
+
 import packet_struct
 
 # Global Variables
@@ -16,6 +18,17 @@ c_fd = 0
 
 # {key = a number: value= file descriptor}
 fd_dict = {}
+
+write_requests_lock = threading.Lock()
+write_requests = {}
+
+read_requests_lock = threading.Lock()
+# Client info, request number, fd, pos, length
+read_requests = []
+
+open_requests_lock = threading.Lock()
+# Client info, request number, file name, create/open
+open_requests = []
 
 """Initialize service"""
 def init_srv():
@@ -142,12 +155,37 @@ def receive_from_clients():
 
         if (type_of_req == packet_struct.OPEN_REQ):
             print "Got open request"
+
+            req_number, create_open, filename = packet_struct.deconstruct_packet(packet_struct.OPEN_ENCODING, packet)[1:]
+
+            # Update the list with open requests
+            open_requests_lock.acquire()
+            open_requests.append([client_info, req_number, filename, create_open])
+            open_requests.release()
+
             serve_open_request(packet, client_info)
+
         elif (type_of_req == packet_struct.READ_REQ):
             print "Got read request"
+
+            req_number, fd, pos, length = packet_struct.deconstruct_packet(packet_struct.READ_REQ_ENCODING, packet)[1:]
+
+            read_requests_lock.acquire()
+            read_requests.append([client_info, req_number, fd, pos, length])
+            read_requests_lock.release()
+
             serve_read_request(packet, client_info)
+
         elif (type_of_req == packet_struct.WRITE_REQ):
             print "Got write request"
+
+            req_number, fd, pos, current_number_of_packet, total_packets, size_of_data, data = packet_struct.deconstruct_packet(packet_struct.WRITE_ENCODING, packet)[1:]
+            data = data.strip('\0')
+
+            write_requests_lock.acquire()
+            write_requests[client_info, fd] = [req_number, current_number_of_packet, total_packets, pos, data, size_of_data]
+            write_requests_lock.release()
+            
             serve_write_request(packet, client_info)
         else:
             pass

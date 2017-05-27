@@ -351,7 +351,7 @@ def mynfs_write(fd, buf):
 
     print "Write from", pos, len(buf)
 
-    # PHASE 1: Find the data before and after buf so len(total_data)%BLOCK_SIZE == 0
+    # ................ PHASE 1: Find the data before and after buf so len(total_data)%BLOCK_SIZE == 0 ................ #
 
     # Find the data before the write position in the current block
     start_pos = pos/packet_struct.BLOCK_SIZE * packet_struct.BLOCK_SIZE
@@ -388,21 +388,16 @@ def mynfs_write(fd, buf):
     # New data to be writen + starting data + ending data
     new_data = new_data + data
 
-    # Add new blocks to cache
-
-    plus = 0
-    if (len(new_data)%packet_struct.BLOCK_SIZE == 0):
-        plus = 1
-
-    for i in xrange(len(new_data)/packet_struct.BLOCK_SIZE + plus):
-        cache_API.insert_block(fd, start_pos + i*packet_struct.BLOCK_SIZE, new_data[i*packet_struct.BLOCK_SIZE: (i+1)*packet_struct.BLOCK_SIZE], freshness[fd])
-
-    # PHASE 2: Send changes over network
-
     # Calculate the total number of packets need to be send
     num_of_packets = n/packet_struct.BLOCK_SIZE
     if (n%packet_struct.BLOCK_SIZE != 0):
         num_of_packets += 1
+
+    # Add new blocks to cache
+    for i in xrange(num_of_packets):
+        cache_API.insert_block(fd, start_pos + i*packet_struct.BLOCK_SIZE, new_data[i*packet_struct.BLOCK_SIZE: (i+1)*packet_struct.BLOCK_SIZE], freshness[fd])
+
+    # ................ PHASE 2: Send changes over network ................ #
 
     for i in xrange(num_of_packets):
         packet_req = packet_struct.construct_write_packet(cur_req_num, fd, pos + i*packet_struct.BLOCK_SIZE, i, num_of_packets, buf[i*packet_struct.BLOCK_SIZE: (i+1)*packet_struct.BLOCK_SIZE])
