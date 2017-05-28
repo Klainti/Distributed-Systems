@@ -161,7 +161,7 @@ def receive_from_clients():
             # Update the list with open requests
             open_requests_lock.acquire()
             open_requests.append([client_info, req_number, filename, create_open])
-            open_requests.release()
+            open_requests_lock.release()
 
             serve_open_request(packet, client_info)
 
