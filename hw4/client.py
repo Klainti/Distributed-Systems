@@ -32,6 +32,9 @@ new_image = open("returned_image", "w+")
 new_image.write(returned_image)
 new_image.close()
 
+while(True):
+    pass
+
 """
 
 NFS_API.mynfs_seek(fd, 0)
