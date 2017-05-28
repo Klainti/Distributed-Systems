@@ -20,6 +20,7 @@ times = 0
 
 
 variables_lock = threading.Lock()
+update_cache_lock = threading.Lock()
 
 # Pointer position for each file
 fd_pos = {}
@@ -176,6 +177,62 @@ def send_read_and_receive_data(fd, pos, size):
     return buf
 
 
+def update_cache_thread():
+
+    global req_num
+
+    while(1):
+
+        print 'WELCOME TO UPDATE CACHE!'
+        variables_lock.acquire()
+        cur_req_num = req_num
+        req_num += 1
+        variables_lock.release()
+
+        update_cache_lock.acquire()
+        pair_list = cache_API.cache_mem.keys()
+
+        for pair in pair_list:
+
+            time_in_cache = cache_API.cache_mem[pair][1]
+            fressness_time = cache_API.cache_mem[pair][2]
+
+            # updated block ?
+            if (time.time() - time_in_cache > fressness_time):
+
+                # remove unupdated block
+                cache_API.remove_specific_block(pair)
+
+                packet_req = packet_struct.construct_read_packet(cur_req_num, pair[0], pair[1], packet_struct.BLOCK_SIZE)
+
+                while(1):
+
+                    # Send packet
+                    send_time = time.time()
+                    udp_socket.sendto(packet_req, SERVER_ADDR)
+
+                # Wait for reply
+                try:
+                    reply_packet = udp_socket.recv(1024)
+                    req_number, cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
+                    if (req_number == cur_req_num):
+                        data = data.strip('\0')
+
+                        # insert into cache
+                        cache_API.insert_block(pair[0], pair[1], data, freshness[pair[0]])
+
+                        rec_time = time.time()
+                        update_timeout(rec_time-send_time)
+                        break
+                except socket.timeout:
+                    rec_time = time.time()
+                    update_timeout(rec_time-send_time)
+                    print 'Timeout'
+
+        # end of update process, sleep some time
+        update_cache_lock.release()
+        time.sleep(1)
+
 
 
 """Set SERVER INFO"""
@@ -187,6 +244,7 @@ def mynfs_setSrv(ipaddr, port):
     SERVER_ADDR = (ipaddr, port)
 
     init_connection()
+    threading.Thread(target=update_cache_thread).start()
     return 1
 
 
@@ -241,6 +299,8 @@ def mynfs_read(fd, n):
     variables_lock.acquire()
     pos = fd_pos[fd]
     variables_lock.release()
+
+    update_cache_lock.acquire()
 
     # Calculate the pos of the request based on BLOCK_SIZE
     new_pos = pos/packet_struct.BLOCK_SIZE * packet_struct.BLOCK_SIZE
@@ -322,6 +382,9 @@ def mynfs_read(fd, n):
             cache_API.insert_block(fd, new_pos + i*packet_struct.BLOCK_SIZE, received_data[i], freshness[fd])
 
     buf = buf[offset:offset+n]
+
+
+    update_cache_lock.release()
 
     # Update pointer
     variables_lock.acquire()
