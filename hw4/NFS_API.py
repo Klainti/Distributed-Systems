@@ -17,6 +17,8 @@ TIMEOUT = 0.003
 sum_time = 0
 times = 0
 
+CLOSE_TIMEOUT = 1
+
 
 variables_lock = threading.Lock()
 
@@ -30,7 +32,24 @@ req_num = 0
 # Freshness time for each file
 freshness = {}
 
+# Last time we made a change (seek/write, read) to a file (fd)
+last_time = {}
+
+
+# Custom ERROR
+class TimeoutError(Exception):
+    def __init__(self, message):
+        self.message = message
+
+# Custom ERROR
+class FileError(Exception):
+    def __init__(self, message):
+        self.message = message
+
+
 """Update timeout of the udp socket"""
+
+
 def update_timeout(new_time):
 
     global udp_socket, sum_time, times
@@ -46,6 +65,8 @@ def update_timeout(new_time):
         times = 0
 
 """Initialize connection with server"""
+
+
 def init_connection():
 
     global udp_socket
@@ -56,7 +77,6 @@ def init_connection():
 
     # start nfs threads!
     cache_API.init_cache()
-
 
 
 """
@@ -107,10 +127,7 @@ def send_read_and_receive_data(fd, pos, size):
 
     received_data[cur_num] = data
 
-    print "INTERNAL READ: Received data with number", cur_num, len(data)
-
     # PHASE 2: Try to receive the remaining packets
-    print "INTERNAL READ: Gonna wait for other", total-1, "packets"
 
     # Try to receive the remaining packets of the reply
     for i in xrange(total-1):
@@ -123,7 +140,6 @@ def send_read_and_receive_data(fd, pos, size):
                 data = data.strip('\0')
                 received_data[cur_num] = data
                 missing_packets.remove(cur_num)
-                print "INTERNAL READ: Received data with number", cur_num, len(data)
             rec_time = time.time()
             update_timeout(rec_time-send_time)
         except socket.timeout:
@@ -131,12 +147,7 @@ def send_read_and_receive_data(fd, pos, size):
             update_timeout(rec_time-send_time)
             print 'Timeout'
 
-    print "INTERNAL READ: Missing_packets: ", missing_packets
-
     # PHASE 3: Retry for missing packets
-
-
-    print "INTERNAL READ: Retry for", len(missing_packets), "packets"
 
     while (missing_packets != []):
 
@@ -150,7 +161,6 @@ def send_read_and_receive_data(fd, pos, size):
             size += packet_struct.BLOCK_SIZE
             end += 1
 
-        print "INTERNAL READ: Send again for data from", pos + missing_packets[start]*packet_struct.BLOCK_SIZE, "with size", size
         data = send_read_and_receive_data(fd, pos + missing_packets[start]*packet_struct.BLOCK_SIZE, size)
 
         piece = 0
@@ -160,15 +170,9 @@ def send_read_and_receive_data(fd, pos, size):
 
         # Update received_data
         for i in xrange(s, e):
-            print "INTERNAL READ: Received part", i
             received_data[i] = data[piece: piece + packet_struct.BLOCK_SIZE]
             piece += packet_struct.BLOCK_SIZE
             missing_packets.remove(i)
-
-        print "INTERNAL READ: Missing_packets: ", missing_packets
-
-    print "INTERNAL READ: Received all parts"
-    print received_data.keys()
 
     buf = ''
 
@@ -178,11 +182,9 @@ def send_read_and_receive_data(fd, pos, size):
     return buf
 
 
-
-
-
-
 """Set SERVER INFO"""
+
+
 def mynfs_setSrv(ipaddr, port):
 
     global SERVER_ADDR
@@ -196,6 +198,8 @@ def mynfs_setSrv(ipaddr, port):
 
 
 """Send Open request"""
+
+
 def mynfs_open(fname, create, cacheFreshnessT):
 
     global udp_socket, req_num
@@ -228,13 +232,17 @@ def mynfs_open(fname, create, cacheFreshnessT):
     variables_lock.acquire()
     fd_pos[fd] = 0
     freshness[fd] = cacheFreshnessT
+    last_time[fd] = time.time()
     variables_lock.release()
 
     return fd
 
 
 """Read n bytes from fd starting from position fd_pos[fd]"""
+
+
 def mynfs_read(fd, n):
+
 
     received_data = {}
 
@@ -244,6 +252,25 @@ def mynfs_read(fd, n):
     requests = []
 
     variables_lock.acquire()
+
+    if (fd not in fd_pos.keys()):
+        variables_lock.release()
+        raise FileError, ("Unknown file descriptor")
+        return
+
+    if (time.time() - last_time[fd] > CLOSE_TIMEOUT):
+
+        cache_API.delete_blocks(fd)
+
+        del fd_pos[fd]
+        del freshness[fd]
+        del last_time[fd]
+        variables_lock.release()
+        raise TimeoutError, ("Last access in file long ago")
+        return
+
+    last_time[fd] = time.time()
+
     pos = fd_pos[fd]
     variables_lock.release()
 
@@ -338,6 +365,8 @@ def mynfs_read(fd, n):
 
 
 """Write n bytes to fd starting from position fd_pos[fd]"""
+
+
 def mynfs_write(fd, buf):
 
     global req_num
@@ -345,6 +374,25 @@ def mynfs_write(fd, buf):
     n = len(buf)
 
     variables_lock.acquire()
+
+    if (fd not in fd_pos.keys()):
+        variables_lock.release()
+        raise FileError, ("Unknown file descriptor")
+        return
+
+    if (time.time() - last_time[fd] > CLOSE_TIMEOUT):
+
+        cache_API.delete_blocks(fd)
+
+        del fd_pos[fd]
+        del freshness[fd]
+        del last_time[fd]
+        variables_lock.release()
+        raise TimeoutError, ("Last access in file long ago")
+        return
+
+    last_time[fd] = time.time()
+
     pos = fd_pos[fd]
     req_num += 1
     cur_req_num = req_num
@@ -446,10 +494,30 @@ def mynfs_write(fd, buf):
     return n
 
 
-
 """Change pointer's position in fd"""
+
+
 def mynfs_seek(fd, pos):
 
     variables_lock.acquire()
+
+    if (fd not in fd_pos.keys()):
+        variables_lock.release()
+        raise FileError, ("Unknown file descriptor")
+        return
+
+    if (time.time() - last_time[fd] > CLOSE_TIMEOUT):
+
+        cache_API.delete_blocks(fd)
+
+        del fd_pos[fd]
+        del freshness[fd]
+        del last_time[fd]
+        variables_lock.release()
+        raise TimeoutError, ("Last access in file long ago")
+        return
+
+    last_time[fd] = time.time()
+
     fd_pos[fd] = pos
     variables_lock.release()

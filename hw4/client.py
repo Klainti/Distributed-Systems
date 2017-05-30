@@ -18,19 +18,27 @@ sample_image_file.close()
 print "Send write request"
 size = NFS_API.mynfs_write(fd, sample_image)
 
+
+
 NFS_API.mynfs_seek(fd, 0)
 
+print "Sleep for 10"
+time.sleep(10)
 
 print "Send read request"
-returned_image = NFS_API.mynfs_read(fd, size)
-if (len(returned_image) < size):
-    print "Not received all"
-    returned_image += NFS_API.mynfs_read(fd, size)
-# print "got msg: {} from read request".format("'"+buf+"'")
+try:
+    returned_image = NFS_API.mynfs_read(fd, size)
 
-new_image = open("returned_image", "w+")
-new_image.write(returned_image)
-new_image.close()
+    if (len(returned_image) < size):
+        print "Not received all"
+        returned_image += NFS_API.mynfs_read(fd, size)
+    # print "got msg: {} from read request".format("'"+buf+"'")
+
+    new_image = open("returned_image", "w+")
+    new_image.write(returned_image)
+    new_image.close()
+except NFS_API.TimeoutError:
+    print "Too late"
 
 while(True):
     pass
