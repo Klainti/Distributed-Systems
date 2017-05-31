@@ -20,14 +20,11 @@ times = 0
 CLOSE_TIMEOUT = 1
 
 
-variables_lock = threading.Lock()
-
+send_read = threading.Lock()
 
 # Pointer position for each file
 fd_pos = {}
 
-# counter for requests!
-req_num = 0
 
 # Freshness time for each file
 freshness = {}
@@ -64,6 +61,7 @@ def update_timeout(new_time):
         sum_time = 0
         times = 0
 
+
 """Initialize connection with server"""
 
 
@@ -87,17 +85,13 @@ def init_connection():
 
 def send_read_and_receive_data(fd, pos, size):
 
-    global req_num
+    send_read.acquire()
+
+    print "Send read", pos, size
 
     received_data = {}
 
-    variables_lock.acquire()
-    cur_req_num = req_num
-    req_num += 1
-    variables_lock.release()
-
-
-    packet_req = packet_struct.construct_read_packet(cur_req_num, fd, pos, size)
+    packet_req = packet_struct.construct_read_packet(fd, pos, size)
 
     # PHASE 1: Send the packet till you get the first reply packet
     while(1):
@@ -108,18 +102,21 @@ def send_read_and_receive_data(fd, pos, size):
 
         # Wait for reply
         try:
-            reply_packet = udp_socket.recv(1024)
-            req_number, cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
-            if (req_number == cur_req_num):
-                data = data.strip('\0')
-                rec_time = time.time()
-                update_timeout(rec_time-send_time)
-                break
+            reply_packet = udp_socket.recv(packet_struct.READ_REP_SIZE)
+
+            if (len(reply_packet) != packet_struct.READ_REP_SIZE and len(reply_packet) > 0):
+                continue
+
+            cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
+
+            data = data.strip('\0')
+            rec_time = time.time()
+            update_timeout(rec_time-send_time)
+
+            break
         except socket.timeout:
             rec_time = time.time()
             update_timeout(rec_time-send_time)
-            print 'Timeout'
-
 
     # Missing packets: so far all except the one we received
     missing_packets = [i for i in xrange(total)]
@@ -130,24 +127,37 @@ def send_read_and_receive_data(fd, pos, size):
     # PHASE 2: Try to receive the remaining packets
 
     # Try to receive the remaining packets of the reply
-    for i in xrange(total-1):
+    print "wait for", total-1
+    i = 0
+    while (i < total-1):
+
+        i += 1
+        print i
 
         try:
+
             # wait for reply
-            reply_packet = udp_socket.recv(1024)
-            req_number, cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
-            if (req_number == cur_req_num and cur_num not in received_data):
-                data = data.strip('\0')
-                received_data[cur_num] = data
-                missing_packets.remove(cur_num)
-            rec_time = time.time()
-            update_timeout(rec_time-send_time)
+            reply_packet = udp_socket.recv(packet_struct.READ_REP_SIZE)
+
+            if (len(reply_packet) == packet_struct.READ_REP_SIZE):
+
+                cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
+
+                if (cur_num not in received_data):
+                    data = data.strip('\0')
+                    received_data[cur_num] = data
+                    missing_packets.remove(cur_num)
+
+                rec_time = time.time()
+                update_timeout(rec_time-send_time)
+
         except socket.timeout:
             rec_time = time.time()
             update_timeout(rec_time-send_time)
-            print 'Timeout'
 
     # PHASE 3: Retry for missing packets
+
+    print "Missing", missing_packets
 
     while (missing_packets != []):
 
@@ -161,7 +171,9 @@ def send_read_and_receive_data(fd, pos, size):
             size += packet_struct.BLOCK_SIZE
             end += 1
 
+        send_read.release()
         data = send_read_and_receive_data(fd, pos + missing_packets[start]*packet_struct.BLOCK_SIZE, size)
+        send_read.acquire()
 
         piece = 0
 
@@ -176,8 +188,10 @@ def send_read_and_receive_data(fd, pos, size):
 
     buf = ''
 
-    for i in xrange (total):
+    for i in xrange(total):
         buf += received_data[i]
+
+    send_read.release()
 
     return buf
 
@@ -202,15 +216,10 @@ def mynfs_setSrv(ipaddr, port):
 
 def mynfs_open(fname, create, cacheFreshnessT):
 
-    global udp_socket, req_num
-
-    variables_lock.acquire()
-    req_num += 1
-    cur_req_num = req_num
-    variables_lock.release()
+    global udp_socket
 
     # create and send the open request!
-    packet_req = packet_struct.construct_open_packet(cur_req_num, create, fname)
+    packet_req = packet_struct.construct_open_packet(create, fname)
 
     while(1):
 
@@ -229,11 +238,9 @@ def mynfs_open(fname, create, cacheFreshnessT):
             update_timeout(rec_time-send_time)
             print 'Timeout'
 
-    variables_lock.acquire()
     fd_pos[fd] = 0
     freshness[fd] = cacheFreshnessT
     last_time[fd] = time.time()
-    variables_lock.release()
 
     return fd
 
@@ -243,18 +250,12 @@ def mynfs_open(fname, create, cacheFreshnessT):
 
 def mynfs_read(fd, n):
 
-
     received_data = {}
-
-    in_cache = [-1]
 
     # pos, size
     requests = []
 
-    variables_lock.acquire()
-
     if (fd not in fd_pos.keys()):
-        variables_lock.release()
         raise FileError, ("Unknown file descriptor")
         return
 
@@ -265,14 +266,12 @@ def mynfs_read(fd, n):
         del fd_pos[fd]
         del freshness[fd]
         del last_time[fd]
-        variables_lock.release()
-        raise TimeoutError, ("Last access in file long ago")
+        raise TimeoutError("Last access in file long ago")
         return
 
     last_time[fd] = time.time()
 
     pos = fd_pos[fd]
-    variables_lock.release()
 
     # Calculate the pos of the request based on BLOCK_SIZE
     new_pos = pos/packet_struct.BLOCK_SIZE * packet_struct.BLOCK_SIZE
@@ -282,7 +281,6 @@ def mynfs_read(fd, n):
     size = max(1, n/packet_struct.BLOCK_SIZE) * packet_struct.BLOCK_SIZE
     if (size < n):
         size += packet_struct.BLOCK_SIZE
-
 
     # First check if the begining of the data requested are in cache
     buf = ""
@@ -303,37 +301,42 @@ def mynfs_read(fd, n):
         buf = buf[offset:offset+n]
 
         # Update pointer
-        variables_lock.acquire()
         fd_pos[fd] += len(buf)
         print "Set fd_pos to", fd_pos[fd]
-        variables_lock.release()
 
         return buf
 
     # If the begining not in cache must send read request at server
 
+
+    in_cache = [new_pos/packet_struct.BLOCK_SIZE - 1]
+
+    pieces = size/packet_struct.BLOCK_SIZE
+    if (size%packet_struct.BLOCK_SIZE != 0):
+        pieces += 1
+
     # First check if any parts are in the cache
-    for i in xrange(size/packet_struct.BLOCK_SIZE):
+    for i in xrange(pieces):
 
         found, data = cache_API.search_block(fd, new_pos+i*packet_struct.BLOCK_SIZE)
 
-        if (found == True):
+        if (found):
 
             received_data[i] = data
             in_cache.append(i)
 
-            # If length of data in cache are less tha BLOCK_SIZE => EOF
+            # If length of data in cache are less than BLOCK_SIZE => EOF
             if (len(data) < packet_struct.BLOCK_SIZE):
-                size = (i+1)*packet_struct.BLOCK_SIZE
+                pieces = i+1
                 break
 
-    in_cache.append(size/packet_struct.BLOCK_SIZE)
+    in_cache.append(pieces)
 
     print "Already in cache:", in_cache
 
     for i in xrange(1, len(in_cache)):
         if (in_cache[i] > in_cache[i-1]+1):
-            requests.append([new_pos + packet_struct.BLOCK_SIZE*(in_cache[i-1]+1), (in_cache[i]-in_cache[i-1]-1)*packet_struct.BLOCK_SIZE])
+            requests.append([packet_struct.BLOCK_SIZE*(in_cache[i-1]+1), (in_cache[i]-in_cache[i-1]-1)*packet_struct.BLOCK_SIZE])
 
     print "Requests", requests
 
@@ -348,18 +351,18 @@ def mynfs_read(fd, n):
     # Construct reply
     buf = ''
 
-    for i in xrange (size/packet_struct.BLOCK_SIZE):
+    for i in xrange(len(received_data)):
         buf += received_data[i]
         if (received_data[i] != "" and i not in in_cache):
             cache_API.insert_block(fd, new_pos + i*packet_struct.BLOCK_SIZE, received_data[i], freshness[fd])
 
+    print len(buf)
     buf = buf[offset:offset+n]
+    print len(buf)
 
     # Update pointer
-    variables_lock.acquire()
     fd_pos[fd] += len(buf)
     print "Set fd_pos to", fd_pos[fd]
-    variables_lock.release()
 
     return buf
 
@@ -369,14 +372,7 @@ def mynfs_read(fd, n):
 
 def mynfs_write(fd, buf):
 
-    global req_num
-
-    n = len(buf)
-
-    variables_lock.acquire()
-
     if (fd not in fd_pos.keys()):
-        variables_lock.release()
         raise FileError, ("Unknown file descriptor")
         return
 
@@ -387,20 +383,14 @@ def mynfs_write(fd, buf):
         del fd_pos[fd]
         del freshness[fd]
         del last_time[fd]
-        variables_lock.release()
         raise TimeoutError, ("Last access in file long ago")
         return
 
     last_time[fd] = time.time()
 
     pos = fd_pos[fd]
-    req_num += 1
-    cur_req_num = req_num
-    variables_lock.release()
 
-    packets = []
-
-    not_acked = []
+    n = len(buf)
 
     print "Write from", pos, len(buf)
 
@@ -443,53 +433,44 @@ def mynfs_write(fd, buf):
 
     # Calculate the total number of packets need to be send
     num_of_packets = n/packet_struct.BLOCK_SIZE
-    if (n%packet_struct.BLOCK_SIZE != 0):
+    if (n % packet_struct.BLOCK_SIZE != 0):
         num_of_packets += 1
 
     # Add new blocks to cache
     for i in xrange(num_of_packets):
+        print start_pos + i*packet_struct.BLOCK_SIZE
         cache_API.insert_block(fd, start_pos + i*packet_struct.BLOCK_SIZE, new_data[i*packet_struct.BLOCK_SIZE: (i+1)*packet_struct.BLOCK_SIZE], freshness[fd])
 
     # ................ PHASE 2: Send changes over network ................ #
 
+    print "Total write packets: ", num_of_packets
+
     for i in xrange(num_of_packets):
-        packet_req = packet_struct.construct_write_packet(cur_req_num, fd, pos + i*packet_struct.BLOCK_SIZE, i, num_of_packets, buf[i*packet_struct.BLOCK_SIZE: (i+1)*packet_struct.BLOCK_SIZE])
-        packets.append(packet_req)
-        print "Append/Send packet with data from", i*packet_struct.BLOCK_SIZE, "to", (i+1)*packet_struct.BLOCK_SIZE, "and pos", pos + i*packet_struct.BLOCK_SIZE
-        udp_socket.sendto(packet_req, SERVER_ADDR)
 
-    send_time = time.time()
+        packet_req = packet_struct.construct_write_packet(fd, pos + i*packet_struct.BLOCK_SIZE, buf[i*packet_struct.BLOCK_SIZE: (i+1)*packet_struct.BLOCK_SIZE])
 
-    not_acked = [i for i in xrange(num_of_packets)]
+        while(True):
 
-    p = 0
+            try:
 
-    # try to send the write request!
-    while(not_acked != []):
+                # print "Send packet with data from", i*packet_struct.BLOCK_SIZE, "to", (i+1)*packet_struct.BLOCK_SIZE, "and pos", pos + i*packet_struct.BLOCK_SIZE
+                udp_socket.sendto(packet_req, SERVER_ADDR)
 
-        try:
-            # wait for reply
-            req_num, packet_num = struct.unpack('!ii', udp_socket.recv(8))
-            print 'Got ack: {} for write request {}'.format(packet_num, cur_req_num)
-            rec_time = time.time()
-            update_timeout(rec_time-send_time)
-            not_acked.remove(packet_num)
-        except socket.timeout:
+                send_time = time.time()
 
-            rec_time = time.time()
-            update_timeout(rec_time-send_time)
+                ack = udp_socket.recv(1024)
 
-            print 'Not received ACK. Send packet', not_acked[p]
+                rec_time = time.time()
+                update_timeout(rec_time-send_time)
 
-            udp_socket.sendto(packets[not_acked[p]], SERVER_ADDR)
-            p = (p+1)%len(not_acked)
-            send_time = time.time()
+                break
 
+            except socket.timeout:
+                rec_time = time.time()
+                update_timeout(rec_time-send_time)
 
     # update pos of fd
-    variables_lock.acquire()
     fd_pos[fd] += n
-    variables_lock.release()
 
     return n
 
@@ -499,11 +480,8 @@ def mynfs_write(fd, buf):
 
 def mynfs_seek(fd, pos):
 
-    variables_lock.acquire()
-
     if (fd not in fd_pos.keys()):
-        variables_lock.release()
-        raise FileError, ("Unknown file descriptor")
+        raise FileError,("Unknown file descriptor")
         return
 
     if (time.time() - last_time[fd] > CLOSE_TIMEOUT):
@@ -513,11 +491,9 @@ def mynfs_seek(fd, pos):
         del fd_pos[fd]
         del freshness[fd]
         del last_time[fd]
-        variables_lock.release()
-        raise TimeoutError, ("Last access in file long ago")
+        raise TimeoutError,("Last access in file long ago")
         return
 
     last_time[fd] = time.time()
 
     fd_pos[fd] = pos
-    variables_lock.release()

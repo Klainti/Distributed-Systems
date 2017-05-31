@@ -20,57 +20,47 @@ WRITE_REQ = 3
 
 # ENCODINGS
 
-# Type, req_number, create/open, File name
-OPEN_ENCODING = '!iii' + str(NAME_LENGTH) + 's'
+# Type, create/open, File name
+OPEN_ENCODING = '!ii' + str(NAME_LENGTH) + 's'
 
-# Type, req_number, Fd, starting pos, current_number_of_packet, total_packets, size_of_data, data
-WRITE_ENCODING = '!iiiiiii' + str(BLOCK_SIZE) + 's'
+# Type, Fd, starting pos, size_of_data, data
+WRITE_ENCODING = '!iiii' + str(BLOCK_SIZE) + 's'
 
-# Type, req_number, Fd, pos, length
-READ_REQ_ENCODING = '!iiiii'
+# Type, Fd, pos, length
+READ_REQ_ENCODING = '!iiii'
 
-
-# req_number, number_of_packet, total_packets, size_of_data, data
-READ_REP_ENCODING = '!iiii' + str(BLOCK_SIZE) + 's'
-
-
-# ACK for request with Req_number
-ACK_ENCODING = '!i'
-
+# Number_of_packet, total_packets, size_of_data, data
+READ_REP_ENCODING = '!iii' + str(BLOCK_SIZE) + 's'
+READ_REP_SIZE = 3*4 + BLOCK_SIZE
 
 # CLIENT FUNCTIONS
 
 # Encode the packet for the create request
-def construct_open_packet(req_number, create, name):
+def construct_open_packet(create, name):
     if (len(name) > NAME_LENGTH):
         raise LengthError, "Too big name"
-    return struct.pack(OPEN_ENCODING, OPEN_REQ, req_number, create, name)
+    return struct.pack(OPEN_ENCODING, OPEN_REQ,create, name)
 
 
 # Encode the packet for the write request
-def construct_write_packet(req_number, fd, pos, cur_num, total, data):
+def construct_write_packet(fd, pos, data):
     if (len(data) > BLOCK_SIZE):
         raise LengthError, "Too many data"
-    return struct.pack(WRITE_ENCODING, WRITE_REQ, req_number, fd, pos, cur_num, total, len(data), data)
+    return struct.pack(WRITE_ENCODING, WRITE_REQ,fd, pos, len(data), data)
 
 
 # Encode the packet for the read request
-def construct_read_packet(req_number, fd, pos, length):
+def construct_read_packet(fd, pos, length):
     if (length <= 0):
         raise LengthError, "Unacceptable Length"
-    return struct.pack(READ_REQ_ENCODING, READ_REQ, req_number, fd, pos, length)
+    return struct.pack(READ_REQ_ENCODING, READ_REQ, fd, pos, length)
 
 
 # SERVER FUNCTIONS
 
 # Encode the packet for the read request
-def construct_read_rep_packet(req_number, cur_num, total, data):
-    return struct.pack(READ_REP_ENCODING, req_number, cur_num, total, len(data), data)
-
-
-# Encode the packet for the read request
-def construct_ACK(req_number):
-    return struct.pack(ACK_ENCODING, req_number)
+def construct_read_rep_packet(cur_num, total, data):
+    return struct.pack(READ_REP_ENCODING, cur_num, total, len(data), data)
 
 
 # COMMON FUNCTION

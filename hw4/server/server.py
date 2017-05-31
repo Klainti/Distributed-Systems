@@ -25,7 +25,7 @@ wait_for_write_request = threading.Lock()
 wait_for_write_request.acquire()
 
 write_requests_lock = threading.Lock()
-write_requests = {}
+write_requests = []
 
 
 
@@ -93,9 +93,8 @@ def serve_open_request():
         open_requests_lock.release()
 
         client_info = new_request[0]
-        req_number = new_request[1]
-        filename = new_request[2]
-        create_open = new_request[3]
+        filename = new_request[1]
+        create_open = new_request[2]
 
         # check first if valid req_number or it is dupli - Takis
         # else not valid - function fails - send to client -1
@@ -111,6 +110,7 @@ def serve_open_request():
         c_fd += 1
         fd_dict[c_fd] = tmp_fd
 
+        "Send open reply"
         # notify client with file descriptor
         udp_socket.sendto(struct.pack('!i', c_fd), client_info)
 
@@ -136,10 +136,11 @@ def serve_read_request():
         read_requests_lock.release()
 
         client_info = new_request[0]
-        req_number = new_request[1]
-        fd = new_request[2]
-        pos = new_request[3]
-        length = new_request[4]
+        fd = new_request[1]
+        pos = new_request[2]
+        length = new_request[3]
+
+        print pos, length
 
         data = []
 
@@ -159,20 +160,18 @@ def serve_read_request():
             data.append(buf)
             # Reached EOF
             if (len(buf) == 0):
+                total_reads = max(1, i)
                 break
 
-        # Recalculate total_reads in case we reached EOF
-        total_reads = len(data)
-
+        print total_reads
 
         # Send total_reads packets
         for i in xrange(total_reads):
 
-            print "Send data", i+1, "/", total_reads, len(data[i])
+            reply_packet = packet_struct.construct_read_rep_packet(i, total_reads, data[i])
+            #print "Send data", i+1, "/", total_reads, len(data[i]), len(reply_packet)
 
-            reply_packet =packet_struct.construct_read_rep_packet(req_number, i, total_reads, data[i])
-
-            #if (i%2 == 0):
+            # if (i%2 == 0):
             udp_socket.sendto(reply_packet, client_info)
 
 
@@ -192,43 +191,33 @@ def serve_write_request():
             wait_for_write_request.acquire()
             write_requests_lock.acquire()
 
-        pairs = write_requests.keys()
+        new_request = write_requests[0]
+        del write_requests[0]
 
         write_requests_lock.release()
 
-        for p in pairs:
+        client_info = new_request[0]
+        fd = new_request[1]
+        pos = new_request[2]
+        data = new_request[3]
+        size_of_data = new_request[4]
 
-            client_info = p[0]
-            fd = p[1]
+        print "packet len: ", size_of_data
 
-            write_requests_lock.acquire()
+        local_fd = fd_dict[fd]
 
-            req_number  = write_requests[p][0]
-            current_number_of_packet = write_requests[p][1]
-            total_packets = write_requests[p][2]
-            pos = write_requests[p][3]
-            data = write_requests[p][4]
-            size_of_data = write_requests[p][5]
+        # seek relative to the current position
+        local_fd.seek(pos, 0)
 
-            del write_requests[p]
+        print "Write at", pos, size_of_data
 
-            write_requests_lock.release()
+        local_fd.write(data)
+        local_fd.flush()
 
-            print "packet len: ", size_of_data
+        print "Send write reply"
+        reply_packet = struct.pack('!i', 1)
 
-            local_fd = fd_dict[fd]
-
-            # seek relative to the current position
-            local_fd.seek(pos, 0)
-
-            print "Write at", pos, size_of_data
-
-            local_fd.write(data)
-            local_fd.flush()
-
-            reply_packet = struct.pack('!ii', req_number, current_number_of_packet)
-
-            udp_socket.sendto(reply_packet, client_info)
+        udp_socket.sendto(reply_packet, client_info)
 
 
 """Receive requests from clients!"""
@@ -245,12 +234,12 @@ def receive_from_clients():
         if (type_of_req == packet_struct.OPEN_REQ):
             print "Got open request"
 
-            req_number, create_open, filename = packet_struct.deconstruct_packet(packet_struct.OPEN_ENCODING, packet)[1:]
+            create_open, filename = packet_struct.deconstruct_packet(packet_struct.OPEN_ENCODING, packet)[1:]
             filename =filename.strip('\0')
 
             # Update the list with open requests
             open_requests_lock.acquire()
-            open_requests.append([client_info, req_number, filename, create_open])
+            open_requests.append([client_info, filename, create_open])
 
             if (open_waiting == 1):
                 open_waiting = 0
@@ -261,10 +250,10 @@ def receive_from_clients():
         elif (type_of_req == packet_struct.READ_REQ):
             print "Got read request"
 
-            req_number, fd, pos, length = packet_struct.deconstruct_packet(packet_struct.READ_REQ_ENCODING, packet)[1:]
+            fd, pos, length = packet_struct.deconstruct_packet(packet_struct.READ_REQ_ENCODING, packet)[1:]
 
             read_requests_lock.acquire()
-            read_requests.append([client_info, req_number, fd, pos, length])
+            read_requests.append([client_info, fd, pos, length])
 
             if (read_waiting == 1):
                 read_waiting = 0
@@ -275,11 +264,11 @@ def receive_from_clients():
         elif (type_of_req == packet_struct.WRITE_REQ):
             print "Got write request"
 
-            req_number, fd, pos, current_number_of_packet, total_packets, size_of_data, data = packet_struct.deconstruct_packet(packet_struct.WRITE_ENCODING, packet)[1:]
+            fd, pos, size_of_data, data = packet_struct.deconstruct_packet(packet_struct.WRITE_ENCODING, packet)[1:]
             data = data.strip('\0')
 
             write_requests_lock.acquire()
-            write_requests[client_info, fd] = [req_number, current_number_of_packet, total_packets, pos, data, size_of_data]
+            write_requests.append([client_info, fd, pos, data, size_of_data])
 
             if (write_waiting == 1):
                 write_waiting = 0

@@ -20,6 +20,10 @@ def insert_block(fd, position, data, freshnessT):
 
     global cache_mem
 
+    if (freshnessT <= 0):
+        print "Invalid freshness value"
+        return
+
     update_cache_lock.acquire()
 
     my_list = [data, time.time(), freshnessT]
@@ -110,7 +114,10 @@ def remove_block():
 
 def update_cache_thread():
 
+
     while(1):
+
+        print "Check cache"
 
         update_cache_lock.acquire()
         pair_list = cache_mem.keys()
