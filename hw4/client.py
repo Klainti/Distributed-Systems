@@ -7,13 +7,13 @@ port = int(raw_input("Give server port: "))
 NFS_API.mynfs_setSrv(ipaddr, port)
 
 print "Send open request"
-fd = NFS_API.mynfs_open('index.png', 0, 10)
+fd = NFS_API.mynfs_open('sample2.png', 0, 1000)
 print "Return fd: {}".format(fd)
 
-
-sample_image_file = open("index.png")
+sample_image_file = open("sample2.png")
 sample_image = sample_image_file.read()
 sample_image_file.close()
+
 
 print "Send write request", len(sample_image)
 size = NFS_API.mynfs_write(fd, sample_image)
@@ -31,7 +31,7 @@ try:
     # print "got msg: {} from read request".format("'"+buf+"'")
 
     print "Save image"
-    new_image = open("returned_image", "w+")
+    new_image = open("received_image.png", "w+")
     new_image.write(returned_image)
     new_image.close()
 except NFS_API.TimeoutError:

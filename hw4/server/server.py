@@ -169,7 +169,7 @@ def serve_read_request():
         for i in xrange(total_reads):
 
             reply_packet = packet_struct.construct_read_rep_packet(i, total_reads, data[i])
-            #print "Send data", i+1, "/", total_reads, len(data[i]), len(reply_packet)
+            print "Send data", i+1, "/", total_reads, len(data[i]), len(reply_packet)
 
             # if (i%2 == 0):
             udp_socket.sendto(reply_packet, client_info)
@@ -265,7 +265,7 @@ def receive_from_clients():
             print "Got write request"
 
             fd, pos, size_of_data, data = packet_struct.deconstruct_packet(packet_struct.WRITE_ENCODING, packet)[1:]
-            data = data.strip('\0')
+            data = data[:size_of_data]
 
             write_requests_lock.acquire()
             write_requests.append([client_info, fd, pos, data, size_of_data])

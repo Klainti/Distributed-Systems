@@ -17,7 +17,7 @@ TIMEOUT = 0.003
 sum_time = 0
 times = 0
 
-CLOSE_TIMEOUT = 1
+CLOSE_TIMEOUT = 1000
 
 
 send_read = threading.Lock()
@@ -49,17 +49,18 @@ class FileError(Exception):
 
 def update_timeout(new_time):
 
-    global udp_socket, sum_time, times
+    pass
+    #global udp_socket, sum_time, times
 
-    sum_time += new_time
-    times += 1
-    if (times >= 10):
-        avg_time = max(0.003, round(float(sum_time/times), 4))
-        print "AVG TIME: {}".format(avg_time)
-        udp_socket.settimeout(avg_time)
-        TIMEOUT = avg_time
-        sum_time = 0
-        times = 0
+    #sum_time += new_time
+    #times += 1
+    #if (times >= 10):
+        #avg_time = max(0.03, round(float(sum_time/times), 4))
+        # print "AVG TIME: {}".format(avg_time)
+        #udp_socket.settimeout(avg_time)
+        #TIMEOUT = avg_time
+        #sum_time = 0
+        #times = 0
 
 
 """Initialize connection with server"""
@@ -93,10 +94,13 @@ def send_read_and_receive_data(fd, pos, size):
 
     packet_req = packet_struct.construct_read_packet(fd, pos, size)
 
+    udp_socket.settimeout(0.05)
+
     # PHASE 1: Send the packet till you get the first reply packet
     while(1):
 
         # Send packet
+        print "Send read request"
         send_time = time.time()
         udp_socket.sendto(packet_req, SERVER_ADDR)
 
@@ -104,12 +108,14 @@ def send_read_and_receive_data(fd, pos, size):
         try:
             reply_packet = udp_socket.recv(packet_struct.READ_REP_SIZE)
 
+            print "Received first", len(reply_packet)
+
             if (len(reply_packet) != packet_struct.READ_REP_SIZE and len(reply_packet) > 0):
                 continue
 
             cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
 
-            data = data.strip('\0')
+            data = data[:length]
             rec_time = time.time()
             update_timeout(rec_time-send_time)
 
@@ -127,12 +133,14 @@ def send_read_and_receive_data(fd, pos, size):
     # PHASE 2: Try to receive the remaining packets
 
     # Try to receive the remaining packets of the reply
+
+    udp_socket.settimeout(0.005)
+
     print "wait for", total-1
     i = 0
     while (i < total-1):
 
         i += 1
-        print i
 
         try:
 
@@ -144,7 +152,7 @@ def send_read_and_receive_data(fd, pos, size):
                 cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
 
                 if (cur_num not in received_data):
-                    data = data.strip('\0')
+                    data = data[:length]
                     received_data[cur_num] = data
                     missing_packets.remove(cur_num)
 
@@ -236,7 +244,6 @@ def mynfs_open(fname, create, cacheFreshnessT):
         except socket.timeout:
             rec_time = time.time()
             update_timeout(rec_time-send_time)
-            print 'Timeout'
 
     fd_pos[fd] = 0
     freshness[fd] = cacheFreshnessT
@@ -356,9 +363,7 @@ def mynfs_read(fd, n):
         if (received_data[i] != "" and i not in in_cache):
             cache_API.insert_block(fd, new_pos + i*packet_struct.BLOCK_SIZE, received_data[i], freshness[fd])
 
-    print len(buf)
     buf = buf[offset:offset+n]
-    print len(buf)
 
     # Update pointer
     fd_pos[fd] += len(buf)
@@ -438,12 +443,16 @@ def mynfs_write(fd, buf):
 
     # Add new blocks to cache
     for i in xrange(num_of_packets):
-        print start_pos + i*packet_struct.BLOCK_SIZE
         cache_API.insert_block(fd, start_pos + i*packet_struct.BLOCK_SIZE, new_data[i*packet_struct.BLOCK_SIZE: (i+1)*packet_struct.BLOCK_SIZE], freshness[fd])
 
     # ................ PHASE 2: Send changes over network ................ #
 
     print "Total write packets: ", num_of_packets
+
+    total_sends = 0
+    total_acks = 0
+
+    udp_socket.settimeout(0.05)
 
     for i in xrange(num_of_packets):
 
@@ -455,10 +464,12 @@ def mynfs_write(fd, buf):
 
                 # print "Send packet with data from", i*packet_struct.BLOCK_SIZE, "to", (i+1)*packet_struct.BLOCK_SIZE, "and pos", pos + i*packet_struct.BLOCK_SIZE
                 udp_socket.sendto(packet_req, SERVER_ADDR)
+                total_sends += 1
 
                 send_time = time.time()
 
-                ack = udp_socket.recv(1024)
+                ack = udp_socket.recv(4)
+                total_acks += 1
 
                 rec_time = time.time()
                 update_timeout(rec_time-send_time)
@@ -471,6 +482,8 @@ def mynfs_write(fd, buf):
 
     # update pos of fd
     fd_pos[fd] += n
+
+    print "Write complete", total_sends, total_acks
 
     return n
 
