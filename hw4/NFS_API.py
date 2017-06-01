@@ -96,8 +96,6 @@ def send_read_and_receive_data(fd, pos, size):
 
     buf = ""
 
-    resend = True
-
     packets = size/packet_struct.BLOCK_SIZE
     if (size%packet_struct.BLOCK_SIZE != 0):
         packets += 1
@@ -110,38 +108,48 @@ def send_read_and_receive_data(fd, pos, size):
 
         packet_req = packet_struct.construct_read_packet(next_request_number, fd, pos + i*packet_struct.BLOCK_SIZE, packet_struct.BLOCK_SIZE)
 
-        try:
+        resend = True
 
-            if (resend):
-                resend = False
-                udp_socket.sendto(packet_req, SERVER_ADDR)
+        while(True):
+
+            try:
+
+                if (resend):
+                    resend = False
+                    udp_socket.sendto(packet_req, SERVER_ADDR)
 
 
-            reply_packet = udp_socket.recv(packet_struct.READ_REP_SIZE)
+                reply_packet = udp_socket.recv(packet_struct.READ_REP_SIZE)
 
-            # Received older packet
-            if (len(reply_packet) != packet_struct.READ_REP_SIZE):
-                continue
+                # Received older packet
+                if (len(reply_packet) != packet_struct.READ_REP_SIZE):
+                    continue
 
-            returned_request_number, cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
+                returned_request_number, cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
 
-            # Received older packet
-            if (returned_request_number != next_request_number):
-                continue
+                # Received older packet
+                if (returned_request_number != next_request_number):
+                    continue
 
-            if (length == 0):
-                print "EOF", next_request_number
+                print length, i
+
+                if (length == 0):
+                    print "EOF", next_request_number
+                    break
+
+                data = data[:length]
+
+                buf += data
+
                 break
 
-            data = data[:length]
-
-            buf += data
-
-        except socket.timeout:
-            resend = True
+            except socket.timeout:
+                resend = True
 
 
     send_read.release()
+
+    print len(buf)
 
     return buf
 
