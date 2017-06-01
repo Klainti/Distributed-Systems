@@ -24,12 +24,13 @@ send_read = threading.Lock()
 # Pointer position for each file
 fd_pos = {}
 
-
 # Freshness time for each file
 freshness = {}
 
 # Last time we made a change (seek/write, read) to a file (fd)
 last_time = {}
+
+next_request_number = 0
 
 
 # Custom ERROR
@@ -92,41 +93,41 @@ def send_read_and_receive_data(fd, pos, size):
 
 
     buf = ""
-    
+
     old_transmit = False
-    
+
     for i in xrange(size/packet_struct.BLOCK_SIZE):
-        
-        
-        
+
+
+
         packet_req = packet_struct.construct_read_packet(fd, pos + i*packet_struct.BLOCK_SIZE, packet_struct.BLOCK_SIZE)
-        
+
         try:
-            
+
             if (not old_transmit):
                 old_transmit = False
                 udp_socket.sendto(packet_req, SERVER_ADDR)
-               
-               
+
+
             reply_packet = udp_socket.recv(packet_struct.READ_REP_SIZE)
-            
-    
+
+
             if (len(reply_packet) != packet_struct.READ_REP_SIZE and len(reply_packet) > 0):
                 old_transmit = True
                 continue
-    
+
             cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
 
             data = data[:length]
 
             buf += data
-            
+
         except socket.timeout:
             pass
 
 
     send_read.release()
-    
+
     return buf
 
 '''
@@ -145,7 +146,7 @@ def send_read_and_receive_data(fd, pos, size):
 
         # Send packet
         if (not old_transmit):
-            old_transmit = False 
+            old_transmit = False
             print "Send read request"
             send_time = time.time()
             udp_socket.sendto(packet_req, SERVER_ADDR)
@@ -252,7 +253,7 @@ def send_read_and_receive_data(fd, pos, size):
             buf += received_data[i]
         except KeyError:
             continue
-            
+
 
     send_read.release()
 
@@ -283,22 +284,39 @@ def mynfs_open(fname, create, cacheFreshnessT):
 
     global udp_socket
 
+    next_request_number += 1
+
     # create and send the open request!
-    packet_req = packet_struct.construct_open_packet(create, fname)
+    packet_req = packet_struct.construct_open_packet(next_request_number, create, fname)
+
+    resend = True
 
     while(1):
 
-        print "Send open request"
-        send_time = time.time()
-        udp_socket.sendto(packet_req, SERVER_ADDR)
+        if (resend):
+            resend = False
+            print "Send open request"
+            send_time = time.time()
+            udp_socket.sendto(packet_req, SERVER_ADDR)
 
         try:
-            # wait for reply (JUST THE FD!)
-            fd = struct.unpack('!i', udp_socket.recv(4))[0]
+
+            reply_packet = udp_socket.recv(packet_struct.READ_REP_SIZE)
+
+            if (len(reply_packet != 8)):
+                continue
+
+            returned_request_number, fd = struct.unpack('!ii', reply_packet)
+
+            if (returned_request_number != next_request_number):
+                continue
+
             rec_time = time.time()
             update_timeout(rec_time-send_time)
             break
+
         except socket.timeout:
+            resend = True
             rec_time = time.time()
             update_timeout(rec_time-send_time)
 
@@ -445,7 +463,9 @@ def mynfs_write(fd, buf):
         del fd_pos[fd]
         del freshness[fd]
         del last_time[fd]
+
         raise TimeoutError, ("Last access in file long ago")
+
         return
 
     last_time[fd] = time.time()
@@ -508,25 +528,42 @@ def mynfs_write(fd, buf):
 
     total_sends = 0
     total_acks = 0
+    timeouts = 0
 
+    #################################################################
     udp_socket.settimeout(0.09)
+    #################################################################
 
     for i in xrange(num_of_packets):
 
-        packet_req = packet_struct.construct_write_packet(fd, pos + i*packet_struct.BLOCK_SIZE, buf[i*packet_struct.BLOCK_SIZE: (i+1)*packet_struct.BLOCK_SIZE])
+        next_request_number += 1
+
+        packet_req = packet_struct.construct_write_packet(next_request_number, fd, pos + i*packet_struct.BLOCK_SIZE, buf[i*packet_struct.BLOCK_SIZE: (i+1)*packet_struct.BLOCK_SIZE])
+
+        resend = True
 
         while(True):
 
             try:
 
                 # print "Send packet with data from", i*packet_struct.BLOCK_SIZE, "to", (i+1)*packet_struct.BLOCK_SIZE, "and pos", pos + i*packet_struct.BLOCK_SIZE
-                udp_socket.sendto(packet_req, SERVER_ADDR)
-                total_sends += 1
+                if (resend):
+                    resend = False
+                    udp_socket.sendto(packet_req, SERVER_ADDR)
 
                 send_time = time.time()
 
-                ack = udp_socket.recv(4)
-                total_acks += 1
+                ack = udp_socket.recv(packet_struct.READ_REP_SIZE)
+
+                # Received a packet from an older transmission
+                if (len(ack) != 4):
+                    continue
+
+                returned_request_number = struct.unpack('!i', ack)
+
+                # Received a packet from an older transmission
+                if (returned_request_number != next_request_number):
+                    continue
 
                 rec_time = time.time()
                 update_timeout(rec_time-send_time)
@@ -534,13 +571,18 @@ def mynfs_write(fd, buf):
                 break
 
             except socket.timeout:
+
+                resend = True
+
                 rec_time = time.time()
                 update_timeout(rec_time-send_time)
+                timeouts += 1
+
 
     # update pos of fd
     fd_pos[fd] += n
 
-    print "Write complete", total_sends, total_acks
+    print "Write complete", timeouts
 
     return n
 
@@ -563,7 +605,5 @@ def mynfs_seek(fd, pos):
         del last_time[fd]
         raise TimeoutError,("Last access in file long ago")
         return
-
-    last_time[fd] = time.time()
 
     fd_pos[fd] = pos
