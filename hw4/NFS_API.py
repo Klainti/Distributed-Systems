@@ -86,6 +86,8 @@ def init_connection():
 
 def send_read_and_receive_data(fd, pos, size):
 
+    global udp_socket, next_request_number
+
     send_read.acquire()
 
 
@@ -94,36 +96,49 @@ def send_read_and_receive_data(fd, pos, size):
 
     buf = ""
 
-    old_transmit = False
+    resend = True
 
-    for i in xrange(size/packet_struct.BLOCK_SIZE):
+    packets = size/packet_struct.BLOCK_SIZE
+    if (size%packet_struct.BLOCK_SIZE != 0):
+        packets += 1
 
+    print "Read", packets
 
+    for i in xrange(packets):
 
-        packet_req = packet_struct.construct_read_packet(fd, pos + i*packet_struct.BLOCK_SIZE, packet_struct.BLOCK_SIZE)
+        next_request_number += 1
+
+        packet_req = packet_struct.construct_read_packet(next_request_number, fd, pos + i*packet_struct.BLOCK_SIZE, packet_struct.BLOCK_SIZE)
 
         try:
 
-            if (not old_transmit):
-                old_transmit = False
+            if (resend):
+                resend = False
                 udp_socket.sendto(packet_req, SERVER_ADDR)
 
 
             reply_packet = udp_socket.recv(packet_struct.READ_REP_SIZE)
 
-
-            if (len(reply_packet) != packet_struct.READ_REP_SIZE and len(reply_packet) > 0):
-                old_transmit = True
+            # Received older packet
+            if (len(reply_packet) != packet_struct.READ_REP_SIZE):
                 continue
 
-            cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
+            returned_request_number, cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
+
+            # Received older packet
+            if (returned_request_number != next_request_number):
+                continue
+
+            if (length == 0):
+                print "EOF", next_request_number
+                break
 
             data = data[:length]
 
             buf += data
 
         except socket.timeout:
-            pass
+            resend = True
 
 
     send_read.release()
@@ -427,18 +442,28 @@ def mynfs_read(fd, n):
 
         data = send_read_and_receive_data(fd, r[0], r[1])
 
+        print "Received length", len(data)
+
         for i in xrange(r[1]/packet_struct.BLOCK_SIZE):
             received_data[i + (r[0]-new_pos)/packet_struct.BLOCK_SIZE] = data[i*packet_struct.BLOCK_SIZE: (i+1)*packet_struct.BLOCK_SIZE]
+
+    print "Buffer pieces", len(received_data)
 
     # Construct reply
     buf = ''
 
     for i in xrange(len(received_data)):
+
         buf += received_data[i]
+
         if (received_data[i] != "" and i not in in_cache):
             cache_API.insert_block(fd, new_pos + i*packet_struct.BLOCK_SIZE, received_data[i], freshness[fd])
 
+    print "Buffer length before offset", len(buf)
+
     buf = buf[offset:offset+n]
+
+    print "Buffer length after offset", len(buf)
 
     # Update pointer
     fd_pos[fd] += len(buf)
@@ -548,7 +573,7 @@ def mynfs_write(fd, buf):
 
             try:
 
-                # print "Send packet with data from", i*packet_struct.BLOCK_SIZE, "to", (i+1)*packet_struct.BLOCK_SIZE, "and pos", pos + i*packet_struct.BLOCK_SIZE
+
                 if (resend):
                     resend = False
                     udp_socket.sendto(packet_req, SERVER_ADDR)
@@ -561,7 +586,7 @@ def mynfs_write(fd, buf):
                 if (len(ack) != 4):
                     continue
 
-                returned_request_number = struct.unpack('!i', ack)
+                returned_request_number = struct.unpack('!i', ack)[0]
 
                 # Received a packet from an older transmission
                 if (returned_request_number != next_request_number):

@@ -151,9 +151,10 @@ def serve_read_request():
         read_requests_lock.release()
 
         client_info = new_request[0]
-        fd = new_request[1]
-        pos = new_request[2]
-        length = new_request[3]
+        req_number = new_request[1]
+        fd = new_request[2]
+        pos = new_request[3]
+        length = new_request[4]
 
         print pos, length
 
@@ -187,7 +188,7 @@ def serve_read_request():
             if (i % 100 == 99):
                 time.sleep(0.09)
 
-            reply_packet = packet_struct.construct_read_rep_packet(i, total_reads, data[i])
+            reply_packet = packet_struct.construct_read_rep_packet(req_number, i, total_reads, data[i])
             print "Send data", i+1, "/", total_reads, len(data[i]), len(reply_packet)
 
             # if (i%2 == 0):
@@ -266,10 +267,10 @@ def receive_from_clients():
         elif (type_of_req == packet_struct.READ_REQ):
             print "Got read request"
 
-            fd, pos, length = packet_struct.deconstruct_packet(packet_struct.READ_REQ_ENCODING, packet)[1:]
+            req_number, fd, pos, length = packet_struct.deconstruct_packet(packet_struct.READ_REQ_ENCODING, packet)[1:]
 
             read_requests_lock.acquire()
-            read_requests.append([client_info, fd, pos, length])
+            read_requests.append([client_info, req_number, fd, pos, length])
 
             if (read_waiting == 1):
                 read_waiting = 0
@@ -283,7 +284,7 @@ def receive_from_clients():
             req_number, fd, pos, size_of_data, data = packet_struct.deconstruct_packet(packet_struct.WRITE_ENCODING, packet)[1:]
             data = data[:size_of_data]
 
-            print "Send write reply"
+            print "Send write reply", req_number
             reply_packet = struct.pack('!i', req_number)
 
             udp_socket.sendto(reply_packet, client_info)

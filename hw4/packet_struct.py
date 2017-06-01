@@ -27,7 +27,7 @@ OPEN_ENCODING = '!iii' + str(NAME_LENGTH) + 's'
 WRITE_ENCODING = '!iiiii' + str(BLOCK_SIZE) + 's'
 
 # Type, request number, Fd, pos, length
-READ_REQ_ENCODING = '!iiii'
+READ_REQ_ENCODING = '!iiiii'
 
 # Request number, number_of_packet, total_packets, size_of_data, data
 READ_REP_ENCODING = '!iiii' + str(BLOCK_SIZE) + 's'

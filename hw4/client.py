@@ -50,16 +50,16 @@ print size1
 NFS_API.mynfs_seek(fd1, 0)
 #NFS_API.mynfs_seek(fd2, 0)
 #NFS_API.mynfs_seek(fd3, 0)
-'''
+
 stime = time.time()
 
 print "Send read request"
 try:
     returned_image1 = NFS_API.mynfs_read(fd1, size1)
 
-    if (len(returned_image1) < size1):
-        print "Not received all", len(returned_image1), size1
-        returned_image1 += NFS_API.mynfs_read(fd1, size1)
+    #if (len(returned_image1) < size1):
+        #print "Not received all", len(returned_image1), size1
+        #returned_image1 += NFS_API.mynfs_read(fd1, size1)
     # print "got msg: {} from read request".format("'"+buf+"'")
 
     print "Save image"
@@ -70,7 +70,7 @@ except NFS_API.TimeoutError:
     print "Too late"
 
 print time.time() -stime
-'''
+
 '''
 print "Send read request"
 try:
