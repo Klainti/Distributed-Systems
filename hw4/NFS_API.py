@@ -13,7 +13,6 @@ SERVER_ADDR = ()
 udp_socket = None
 
 # INIT VALUE OF TIMEOUT (ms)
-TIMEOUT = 0.003
 sum_time = 0
 times = 0
 
@@ -72,7 +71,7 @@ def init_connection():
 
     # create socket
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    udp_socket.settimeout(0.003)
+    udp_socket.settimeout(0.09)
 
     # start nfs threads!
     cache_API.init_cache()
@@ -88,21 +87,68 @@ def send_read_and_receive_data(fd, pos, size):
 
     send_read.acquire()
 
+
+    udp_socket.settimeout(0.005)
+
+
+    buf = ""
+    
+    old_transmit = False
+    
+    for i in xrange(size/packet_struct.BLOCK_SIZE):
+        
+        
+        
+        packet_req = packet_struct.construct_read_packet(fd, pos + i*packet_struct.BLOCK_SIZE, packet_struct.BLOCK_SIZE)
+        
+        try:
+            
+            if (not old_transmit):
+                old_transmit = False
+                udp_socket.sendto(packet_req, SERVER_ADDR)
+               
+               
+            reply_packet = udp_socket.recv(packet_struct.READ_REP_SIZE)
+            
+    
+            if (len(reply_packet) != packet_struct.READ_REP_SIZE and len(reply_packet) > 0):
+                old_transmit = True
+                continue
+    
+            cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
+
+            data = data[:length]
+
+            buf += data
+            
+        except socket.timeout:
+            pass
+
+
+    send_read.release()
+    
+    return buf
+
+'''
     print "Send read", pos, size
 
     received_data = {}
 
     packet_req = packet_struct.construct_read_packet(fd, pos, size)
 
-    udp_socket.settimeout(0.05)
+    udp_socket.settimeout(size/packet_struct.BLOCK_SIZE * 0.005)
+
+    old_transmit = False
 
     # PHASE 1: Send the packet till you get the first reply packet
     while(1):
 
         # Send packet
-        print "Send read request"
-        send_time = time.time()
-        udp_socket.sendto(packet_req, SERVER_ADDR)
+        if (not old_transmit):
+            old_transmit = False 
+            print "Send read request"
+            send_time = time.time()
+            udp_socket.sendto(packet_req, SERVER_ADDR)
 
         # Wait for reply
         try:
@@ -111,6 +157,7 @@ def send_read_and_receive_data(fd, pos, size):
             print "Received first", len(reply_packet)
 
             if (len(reply_packet) != packet_struct.READ_REP_SIZE and len(reply_packet) > 0):
+                old_transmit = True
                 continue
 
             cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
@@ -134,7 +181,7 @@ def send_read_and_receive_data(fd, pos, size):
 
     # Try to receive the remaining packets of the reply
 
-    udp_socket.settimeout(0.005)
+    udp_socket.settimeout(0.0005)
 
     print "wait for", total-1
     i = 0
@@ -152,9 +199,13 @@ def send_read_and_receive_data(fd, pos, size):
                 cur_num, total, length, data = struct.unpack(packet_struct.READ_REP_ENCODING, reply_packet)
 
                 if (cur_num not in received_data):
+                    # print "Received", cur_num, i
                     data = data[:length]
                     received_data[cur_num] = data
-                    missing_packets.remove(cur_num)
+                    try:
+                        missing_packets.remove(cur_num)
+                    except ValueError:
+                        pass
 
                 rec_time = time.time()
                 update_timeout(rec_time-send_time)
@@ -165,7 +216,7 @@ def send_read_and_receive_data(fd, pos, size):
 
     # PHASE 3: Retry for missing packets
 
-    print "Missing", missing_packets
+    print "Missing", missing_packets, len(missing_packets)
 
     while (missing_packets != []):
 
@@ -197,11 +248,17 @@ def send_read_and_receive_data(fd, pos, size):
     buf = ''
 
     for i in xrange(total):
-        buf += received_data[i]
+        try:
+            buf += received_data[i]
+        except KeyError:
+            continue
+            
 
     send_read.release()
 
     return buf
+
+'''
 
 
 """Set SERVER INFO"""
@@ -452,7 +509,7 @@ def mynfs_write(fd, buf):
     total_sends = 0
     total_acks = 0
 
-    udp_socket.settimeout(0.05)
+    udp_socket.settimeout(0.09)
 
     for i in xrange(num_of_packets):
 

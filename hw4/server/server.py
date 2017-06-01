@@ -6,6 +6,7 @@ sys.path.append('../../hw4')
 import socket
 import struct
 import os
+import time
 import threading
 
 import packet_struct
@@ -167,6 +168,8 @@ def serve_read_request():
 
         # Send total_reads packets
         for i in xrange(total_reads):
+            if (i % 100 == 99):
+                time.sleep(0.09)
 
             reply_packet = packet_struct.construct_read_rep_packet(i, total_reads, data[i])
             print "Send data", i+1, "/", total_reads, len(data[i]), len(reply_packet)
@@ -214,10 +217,7 @@ def serve_write_request():
         local_fd.write(data)
         local_fd.flush()
 
-        print "Send write reply"
-        reply_packet = struct.pack('!i', 1)
-
-        udp_socket.sendto(reply_packet, client_info)
+       
 
 
 """Receive requests from clients!"""
@@ -263,6 +263,11 @@ def receive_from_clients():
 
         elif (type_of_req == packet_struct.WRITE_REQ):
             print "Got write request"
+
+            print "Send write reply"
+            reply_packet = struct.pack('!i', 1)
+
+            udp_socket.sendto(reply_packet, client_info)
 
             fd, pos, size_of_data, data = packet_struct.deconstruct_packet(packet_struct.WRITE_ENCODING, packet)[1:]
             data = data[:size_of_data]

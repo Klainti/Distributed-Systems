@@ -117,8 +117,6 @@ def update_cache_thread():
 
     while(1):
 
-        print "Check cache"
-
         update_cache_lock.acquire()
         pair_list = cache_mem.keys()
 
