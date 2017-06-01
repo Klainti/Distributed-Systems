@@ -6,7 +6,7 @@ ipaddr = raw_input("Give server ip: ")
 port = int(raw_input("Give server port: "))
 NFS_API.mynfs_setSrv(ipaddr, port)
 
-fd1 = NFS_API.mynfs_open('text100MB.txt', 0, 1000)
+fd1 = NFS_API.mynfs_open('text10MB.txt', 0, 1000)
 print "Return fd: {}".format(fd1)
 
 #print "Send open request"
@@ -18,7 +18,7 @@ print "Return fd: {}".format(fd1)
 #print "Return fd: {}".format(fd3)
 
 
-sample_image_file1 = open("file100MB.txt")
+sample_image_file1 = open("file10MB.txt")
 sample_image1 = sample_image_file1.read()
 sample_image_file1.close()
 
@@ -30,11 +30,11 @@ sample_image_file1.close()
 #sample_image3 = sample_image_file3.read()
 #sample_image_file3.close()
 
-
+stime = time.time()
 print "Send write request", len(sample_image1)
 size1 = NFS_API.mynfs_write(fd1, sample_image1)
 print size1
-
+print time.time() - stime
 #print "Send write request", len(sample_image2)
 #size2 = NFS_API.mynfs_write(fd2, sample_image2)
 #print size2
@@ -63,7 +63,7 @@ try:
     # print "got msg: {} from read request".format("'"+buf+"'")
 
     print "Save image"
-    new_image1 = open("received_text100MB.txt", "w+")
+    new_image1 = open("received_text10MB.txt", "w+")
     new_image1.write(returned_image1)
     new_image1.close()
 except NFS_API.TimeoutError:
