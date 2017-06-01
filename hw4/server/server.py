@@ -19,7 +19,8 @@ c_fd = 0
 
 # {key = a number: value= file descriptor}
 fd_dict = {}
-
+fd_dict_lock = threading.Lock()
+INACTIVE_TIME = 1000
 
 write_waiting = 0
 wait_for_write_request = threading.Lock()
@@ -27,9 +28,6 @@ wait_for_write_request.acquire()
 
 write_requests_lock = threading.Lock()
 write_requests = []
-
-
-
 
 read_waiting = 0
 wait_for_read_request = threading.Lock()
@@ -69,8 +67,21 @@ def init_srv():
     threading.Thread(target=serve_open_request).start()
     threading.Thread(target=serve_read_request).start()
     threading.Thread(target=serve_write_request).start()
+    threading.Thread(target=close_fd).start()
 
     print 'Service location: ({},{})'.format(MY_IP, udp_port)
+
+def close_fd():
+
+    global fd_dict, INACTIVE_TIME
+
+    while (1):
+        fd_dict_lock.acquire()
+        for key in fd_dict.keys():
+            if (time.time() - fd_dict[key][1] > INACTIVE_TIME):
+                del fd_dict[key]
+        fd_dict_lock.release()
+        time.sleep(60)
 
 """Serves an open request"""
 def serve_open_request():
@@ -109,7 +120,9 @@ def serve_open_request():
 
         # update fd_dict
         c_fd += 1
-        fd_dict[c_fd] = tmp_fd
+        fd_dict_lock.acquire()
+        fd_dict[c_fd] = (tmp_fd, time.time())
+        fd_dict_lock.release()
 
         "Send open reply"
         # notify client with file descriptor
@@ -144,8 +157,10 @@ def serve_read_request():
         print pos, length
 
         data = []
-
-        local_fd = fd_dict[fd]
+        
+        fd_dict_lock.acquire()
+        local_fd = fd_dict[fd][0]
+        fd_dict_lock.release()
 
         # seek relative to the current position
         local_fd.seek(pos, 0)
@@ -207,7 +222,9 @@ def serve_write_request():
 
         print "packet len: ", size_of_data
 
-        local_fd = fd_dict[fd]
+        fd_dict_lock.acquire()
+        local_fd = fd_dict[fd][0]
+        fd_dict_lock.release()
 
         # seek relative to the current position
         local_fd.seek(pos, 0)
