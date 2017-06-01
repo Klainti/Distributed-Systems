@@ -214,11 +214,10 @@ def serve_write_request():
 
         write_requests_lock.release()
 
-        client_info = new_request[0]
-        fd = new_request[1]
-        pos = new_request[2]
-        data = new_request[3]
-        size_of_data = new_request[4]
+        fd = new_request[0]
+        pos = new_request[1]
+        data = new_request[2]
+        size_of_data = new_request[3]
 
         print "packet len: ", size_of_data
 
@@ -236,7 +235,6 @@ def serve_write_request():
 
        
 
-
 """Receive requests from clients!"""
 def receive_from_clients():
 
@@ -251,12 +249,12 @@ def receive_from_clients():
         if (type_of_req == packet_struct.OPEN_REQ):
             print "Got open request"
 
-            create_open, filename = packet_struct.deconstruct_packet(packet_struct.OPEN_ENCODING, packet)[1:]
+            req_number, create_open, filename = packet_struct.deconstruct_packet(packet_struct.OPEN_ENCODING, packet)[1:]
             filename =filename.strip('\0')
 
             # Update the list with open requests
             open_requests_lock.acquire()
-            open_requests.append([client_info, filename, create_open])
+            open_requests.append([client_info, req_number, filename, create_open])
 
             if (open_waiting == 1):
                 open_waiting = 0
@@ -281,16 +279,16 @@ def receive_from_clients():
         elif (type_of_req == packet_struct.WRITE_REQ):
             print "Got write request"
 
+            req_number, fd, pos, size_of_data, data = packet_struct.deconstruct_packet(packet_struct.WRITE_ENCODING, packet)[1:]
+            data = data[:size_of_data]
+
             print "Send write reply"
-            reply_packet = struct.pack('!i', 1)
+            reply_packet = struct.pack('!i', req_number)
 
             udp_socket.sendto(reply_packet, client_info)
 
-            fd, pos, size_of_data, data = packet_struct.deconstruct_packet(packet_struct.WRITE_ENCODING, packet)[1:]
-            data = data[:size_of_data]
-
             write_requests_lock.acquire()
-            write_requests.append([client_info, fd, pos, data, size_of_data])
+            write_requests.append([fd, pos, data, size_of_data])
 
             if (write_waiting == 1):
                 write_waiting = 0
