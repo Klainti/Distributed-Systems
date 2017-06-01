@@ -282,7 +282,7 @@ def mynfs_setSrv(ipaddr, port):
 
 def mynfs_open(fname, create, cacheFreshnessT):
 
-    global udp_socket
+    global udp_socket, next_request_number
 
     next_request_number += 1
 
@@ -303,7 +303,7 @@ def mynfs_open(fname, create, cacheFreshnessT):
 
             reply_packet = udp_socket.recv(packet_struct.READ_REP_SIZE)
 
-            if (len(reply_packet != 8)):
+            if (len(reply_packet) != 8):
                 continue
 
             returned_request_number, fd = struct.unpack('!ii', reply_packet)
@@ -451,6 +451,8 @@ def mynfs_read(fd, n):
 
 
 def mynfs_write(fd, buf):
+
+    global udp_socket, next_request_number
 
     if (fd not in fd_pos.keys()):
         raise FileError, ("Unknown file descriptor")

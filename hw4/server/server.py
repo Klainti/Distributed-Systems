@@ -105,8 +105,9 @@ def serve_open_request():
         open_requests_lock.release()
 
         client_info = new_request[0]
-        filename = new_request[1]
-        create_open = new_request[2]
+        request_number = new_request[1]
+        filename = new_request[2]
+        create_open = new_request[3]
 
         # check first if valid req_number or it is dupli - Takis
         # else not valid - function fails - send to client -1
@@ -126,7 +127,7 @@ def serve_open_request():
 
         "Send open reply"
         # notify client with file descriptor
-        udp_socket.sendto(struct.pack('!i', c_fd), client_info)
+        udp_socket.sendto(struct.pack('!ii', request_number, c_fd), client_info)
 
 
 """Serves a read request"""
@@ -157,7 +158,7 @@ def serve_read_request():
         print pos, length
 
         data = []
-        
+
         fd_dict_lock.acquire()
         local_fd = fd_dict[fd][0]
         fd_dict_lock.release()
@@ -233,7 +234,7 @@ def serve_write_request():
         local_fd.write(data)
         local_fd.flush()
 
-       
+
 
 """Receive requests from clients!"""
 def receive_from_clients():
