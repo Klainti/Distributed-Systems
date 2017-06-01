@@ -131,8 +131,6 @@ def send_read_and_receive_data(fd, pos, size):
                 if (returned_request_number != next_request_number):
                     continue
 
-                print length, i
-
                 if (length == 0):
                     print "EOF", next_request_number
                     break
