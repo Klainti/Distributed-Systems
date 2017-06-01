@@ -6,7 +6,6 @@ sys.path.append('../../hw4')
 import socket
 import struct
 import os
-import time
 import threading
 
 import packet_struct
@@ -19,29 +18,13 @@ c_fd = 0
 
 # {key = a number: value= file descriptor}
 fd_dict = {}
-fd_dict_lock = threading.Lock()
-INACTIVE_TIME = 1000
-
-write_waiting = 0
-wait_for_write_request = threading.Lock()
-wait_for_write_request.acquire()
 
 write_requests_lock = threading.Lock()
-write_requests = []
-
-read_waiting = 0
-wait_for_read_request = threading.Lock()
-wait_for_read_request.acquire()
+write_requests = {}
 
 read_requests_lock = threading.Lock()
 # Client info, request number, fd, pos, length
 read_requests = []
-
-
-
-open_waiting = 0
-wait_for_open_request = threading.Lock()
-wait_for_open_request.acquire()
 
 open_requests_lock = threading.Lock()
 # Client info, request number, file name, create/open
@@ -64,183 +47,100 @@ def init_srv():
     udp_socket.bind((MY_IP, udp_port))
     udp_port = udp_socket.getsockname()[1]
 
-    threading.Thread(target=serve_open_request).start()
-    threading.Thread(target=serve_read_request).start()
-    threading.Thread(target=serve_write_request).start()
-    threading.Thread(target=close_fd).start()
-
     print 'Service location: ({},{})'.format(MY_IP, udp_port)
 
-def close_fd():
-
-    global fd_dict, INACTIVE_TIME
-
-    while (1):
-        fd_dict_lock.acquire()
-        for key in fd_dict.keys():
-            if (time.time() - fd_dict[key][1] > INACTIVE_TIME):
-                del fd_dict[key]
-        fd_dict_lock.release()
-        time.sleep(60)
-
 """Serves an open request"""
-def serve_open_request():
+def serve_open_request(packet, client_info):
 
-    global c_fd, fd_dict, udp_socket, open_waiting
+    global c_fd, fd_dict, udp_socket
 
+    #unpack packet
+    req_number, create_open, filename = packet_struct.deconstruct_packet(packet_struct.OPEN_ENCODING, packet)[1:]
 
-    while(True):
+    filename = filename.strip('\0')
 
-        open_requests_lock.acquire()
+    # check first if valid req_number or it is dupli - Takis
+    # else not valid - function fails - send to client -1
 
-        if (len(open_requests) == 0):
-            open_waiting = 1
-            open_requests_lock.release()
-            wait_for_open_request.acquire()
-            open_requests_lock.acquire()
+    if (create_open == 0):
+        # create a file
+        tmp_fd = open(filename, 'w+')
+    else:
+        # open a file that already exists!
+        tmp_fd = open(filename, 'r+')
 
-        new_request = open_requests[0]
-        del open_requests[0]
+    # update fd_dict
+    c_fd += 1
+    fd_dict[c_fd] = tmp_fd
 
-        open_requests_lock.release()
-
-        client_info = new_request[0]
-        request_number = new_request[1]
-        filename = new_request[2]
-        create_open = new_request[3]
-
-        # check first if valid req_number or it is dupli - Takis
-        # else not valid - function fails - send to client -1
-
-        if (create_open == 0):
-            # create a file
-            tmp_fd = open(filename, 'w+')
-        else:
-            # open a file that already exists!
-            tmp_fd = open(filename, 'r+')
-
-        # update fd_dict
-        c_fd += 1
-        fd_dict_lock.acquire()
-        fd_dict[c_fd] = (tmp_fd, time.time())
-        fd_dict_lock.release()
-
-        "Send open reply"
-        # notify client with file descriptor
-        udp_socket.sendto(struct.pack('!ii', request_number, c_fd), client_info)
-
+    # notify client with file descriptor
+    udp_socket.sendto(struct.pack('!ii', req_number, c_fd), client_info)
 
 """Serves a read request"""
-def serve_read_request():
+def serve_read_request(packet, client_info):
 
-    global udp_socket, read_waiting
+    global udp_socket
+    # unpack packet
+    req_number, fd, pos, length = packet_struct.deconstruct_packet(packet_struct.READ_REQ_ENCODING, packet)[1:]
 
-    while(True):
+    data = []
 
-        read_requests_lock.acquire()
+    local_fd = fd_dict[fd]
 
-        if (len(read_requests) == 0):
-            read_waiting = 1
-            read_requests_lock.release()
-            wait_for_read_request.acquire()
-            read_requests_lock.acquire()
+    # seek relative to the current position
+    local_fd.seek(pos, 0)
 
-        new_request = read_requests[0]
-        del read_requests[0]
+    # get total reads!
+    total_reads = int(length/packet_struct.BLOCK_SIZE)
+    if (length % packet_struct.BLOCK_SIZE != 0):
+        total_reads += 1
 
-        read_requests_lock.release()
+    for i in xrange(0, total_reads):
+        buf = local_fd.read(packet_struct.BLOCK_SIZE)
+        data.append(buf)
+        if (len(buf) == 0):
+            break
 
-        client_info = new_request[0]
-        req_number = new_request[1]
-        fd = new_request[2]
-        pos = new_request[3]
-        length = new_request[4]
 
-        print pos, length
 
-        data = []
+    total_reads = len(data)
 
-        fd_dict_lock.acquire()
-        local_fd = fd_dict[fd][0]
-        fd_dict_lock.release()
+    for i in xrange(total_reads):
 
-        # seek relative to the current position
-        local_fd.seek(pos, 0)
+        print "Send data", i+1, "/", total_reads, len(data[i])
 
-        # get total reads!
-        total_reads = int(length/packet_struct.BLOCK_SIZE)
-        if (length % packet_struct.BLOCK_SIZE != 0):
-            total_reads += 1
+        reply_packet =packet_struct.construct_read_rep_packet(req_number, i, total_reads, data[i])
 
-        # Get data
-        for i in xrange(0, total_reads):
-            buf = local_fd.read(packet_struct.BLOCK_SIZE)
-            data.append(buf)
-            # Reached EOF
-            if (len(buf) == 0):
-                total_reads = max(1, i)
-                break
-
-        print total_reads
-
-        # Send total_reads packets
-        for i in xrange(total_reads):
-            if (i % 100 == 99):
-                time.sleep(0.09)
-
-            reply_packet = packet_struct.construct_read_rep_packet(req_number, i, total_reads, data[i])
-            print "Send data", i+1, "/", total_reads, len(data[i]), len(reply_packet)
-
-            # if (i%2 == 0):
-            udp_socket.sendto(reply_packet, client_info)
-
+        #if (i%2 == 0):
+        udp_socket.sendto(reply_packet, client_info)
 
 """Serves a write request"""
-def serve_write_request():
+def serve_write_request(packet, client_info):
 
-    global udp_socket, write_waiting
+    global udp_socket
 
+    print 'packet len: {}'.format(len(packet))
+    req_number, fd, pos, size_of_data, data = packet_struct.deconstruct_packet(packet_struct.WRITE_ENCODING, packet)[1:]
+    data = data.strip('\0')
 
-    while(True):
+    local_fd = fd_dict[fd]
 
-        write_requests_lock.acquire()
+    # seek relative to the current position
+    local_fd.seek(pos, 0)
 
-        if (len(write_requests) == 0):
-            write_waiting = 1
-            write_requests_lock.release()
-            wait_for_write_request.acquire()
-            write_requests_lock.acquire()
+    print "Write at", pos, size_of_data
 
-        new_request = write_requests[0]
-        del write_requests[0]
+    local_fd.write(data)
+    local_fd.flush()
 
-        write_requests_lock.release()
+    reply_packet = struct.pack('!i', req_number)
 
-        fd = new_request[0]
-        pos = new_request[1]
-        data = new_request[2]
-        size_of_data = new_request[3]
-
-        print "packet len: ", size_of_data
-
-        fd_dict_lock.acquire()
-        local_fd = fd_dict[fd][0]
-        fd_dict_lock.release()
-
-        # seek relative to the current position
-        local_fd.seek(pos, 0)
-
-        print "Write at", pos, size_of_data
-
-        local_fd.write(data)
-        local_fd.flush()
-
-
+    udp_socket.sendto(reply_packet, client_info)
 
 """Receive requests from clients!"""
 def receive_from_clients():
 
-    global udp_socket, open_waiting, read_waiting, write_waiting
+    global udp_socket
 
     while(1):
         packet, client_info = udp_socket.recvfrom(1024)
@@ -252,52 +152,23 @@ def receive_from_clients():
             print "Got open request"
 
             req_number, create_open, filename = packet_struct.deconstruct_packet(packet_struct.OPEN_ENCODING, packet)[1:]
-            filename =filename.strip('\0')
 
-            # Update the list with open requests
-            open_requests_lock.acquire()
-            open_requests.append([client_info, req_number, filename, create_open])
-
-            if (open_waiting == 1):
-                open_waiting = 0
-                wait_for_open_request.release()
-
-            open_requests_lock.release()
+            serve_open_request(packet, client_info)
 
         elif (type_of_req == packet_struct.READ_REQ):
             print "Got read request"
 
             req_number, fd, pos, length = packet_struct.deconstruct_packet(packet_struct.READ_REQ_ENCODING, packet)[1:]
 
-            read_requests_lock.acquire()
-            read_requests.append([client_info, req_number, fd, pos, length])
-
-            if (read_waiting == 1):
-                read_waiting = 0
-                wait_for_read_request.release()
-
-            read_requests_lock.release()
+            serve_read_request(packet, client_info)
 
         elif (type_of_req == packet_struct.WRITE_REQ):
             print "Got write request"
 
             req_number, fd, pos, size_of_data, data = packet_struct.deconstruct_packet(packet_struct.WRITE_ENCODING, packet)[1:]
-            data = data[:size_of_data]
+            data = data.strip('\0')
 
-            print "Send write reply", req_number
-            reply_packet = struct.pack('!i', req_number)
-
-            udp_socket.sendto(reply_packet, client_info)
-
-            write_requests_lock.acquire()
-            write_requests.append([fd, pos, data, size_of_data])
-
-            if (write_waiting == 1):
-                write_waiting = 0
-                wait_for_write_request.release()
-
-            write_requests_lock.release()
-
+            serve_write_request(packet, client_info)
         else:
             pass
 
