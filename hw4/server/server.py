@@ -143,7 +143,7 @@ def receive_from_clients():
     global udp_socket
 
     while(1):
-        packet, client_info = udp_socket.recvfrom(1024)
+        packet, client_info = udp_socket.recvfrom(packet_struct.WRITE_REQ_SIZE)
 
         # Get only the type of the request!
         type_of_req = struct.unpack_from('!i', packet[:4])[0]

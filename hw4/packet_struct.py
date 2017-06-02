@@ -10,7 +10,7 @@ class LengthError(Exception):
 
 
 # CONSTANTS
-BLOCK_SIZE = 989
+BLOCK_SIZE = 16380
 
 NAME_LENGTH = 150
 
@@ -25,6 +25,7 @@ OPEN_ENCODING = '!iii' + str(NAME_LENGTH) + 's'
 
 # Type, request number, Fd, starting pos, size_of_data, data
 WRITE_ENCODING = '!iiiii' + str(BLOCK_SIZE) + 's'
+WRITE_REQ_SIZE = 5*4 + BLOCK_SIZE
 
 # Type, request number, Fd, pos, length
 READ_REQ_ENCODING = '!iiiii'

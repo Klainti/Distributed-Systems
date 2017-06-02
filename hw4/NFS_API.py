@@ -49,16 +49,13 @@ class FileError(Exception):
 
 def update_timeout(new_time):
 
-    print new_time
-
     global udp_socket, sum_time, times
 
     sum_time += new_time
     times += 1
     if (times >= 100):
-        print sum_time, times
         avg_time = max(0.03, float(sum_time/times))
-        print "AVG TIME: {}".format(avg_time)
+        # print "AVG TIME: {}".format(avg_time)
         udp_socket.settimeout(avg_time)
         TIMEOUT = avg_time
         sum_time = 0
@@ -347,11 +344,7 @@ def mynfs_read(fd, n):
         if (received_data[i] != "" and i not in in_cache):
             cache_API.insert_block(fd, new_pos + i*packet_struct.BLOCK_SIZE, received_data[i], freshness[fd])
 
-    print "Buffer length before offset", len(buf)
-
     buf = buf[offset:offset+n]
-
-    print "Buffer length after offset", len(buf)
 
     # Update pointer
     fd_pos[fd] += len(buf)
