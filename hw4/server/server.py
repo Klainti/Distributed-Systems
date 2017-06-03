@@ -107,7 +107,7 @@ def serve_read_request(packet, client_info):
 
     for i in xrange(total_reads):
 
-        print "Send data", i+1, "/", total_reads, len(data[i])
+        # print "Send data", i+1, "/", total_reads, len(data[i])
 
         reply_packet =packet_struct.construct_read_rep_packet(req_number, i, total_reads, data[i])
 
@@ -119,7 +119,7 @@ def serve_write_request(packet, client_info):
 
     global udp_socket
 
-    print 'packet len: {}'.format(len(packet))
+    # print 'packet len: {}'.format(len(packet))
     req_number, fd, pos, size_of_data, data = packet_struct.deconstruct_packet(packet_struct.WRITE_ENCODING, packet)[1:]
     data = data.strip('\0')
 
@@ -128,7 +128,7 @@ def serve_write_request(packet, client_info):
     # seek relative to the current position
     local_fd.seek(pos, 0)
 
-    print "Write at", pos, size_of_data
+    # print "Write at", pos, size_of_data
 
     local_fd.write(data)
     local_fd.flush()
@@ -149,21 +149,21 @@ def receive_from_clients():
         type_of_req = struct.unpack_from('!i', packet[:4])[0]
 
         if (type_of_req == packet_struct.OPEN_REQ):
-            print "Got open request"
+            # print "Got open request"
 
             req_number, create_open, filename = packet_struct.deconstruct_packet(packet_struct.OPEN_ENCODING, packet)[1:]
 
             serve_open_request(packet, client_info)
 
         elif (type_of_req == packet_struct.READ_REQ):
-            print "Got read request"
+            # print "Got read request"
 
             req_number, fd, pos, length = packet_struct.deconstruct_packet(packet_struct.READ_REQ_ENCODING, packet)[1:]
 
             serve_read_request(packet, client_info)
 
         elif (type_of_req == packet_struct.WRITE_REQ):
-            print "Got write request"
+            # print "Got write request"
 
             req_number, fd, pos, size_of_data, data = packet_struct.deconstruct_packet(packet_struct.WRITE_ENCODING, packet)[1:]
             data = data.strip('\0')
