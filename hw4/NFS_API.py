@@ -53,11 +53,14 @@ def update_timeout(new_time):
 
     sum_time += new_time
     times += 1
-    if (times >= 100):
+
+    if (times >= 50):
         avg_time = max(0.03, float(sum_time/times))
-        # print "AVG TIME: {}".format(avg_time)
+
         udp_socket.settimeout(avg_time)
+
         TIMEOUT = avg_time
+
         sum_time = 0
         times = 0
 
@@ -101,8 +104,6 @@ def send_read_and_receive_data(fd, pos, size):
     if (size%packet_struct.BLOCK_SIZE != 0):
         packets += 1
 
-    print "Read", packets
-
     for i in xrange(packets):
 
         next_request_number += 1
@@ -136,7 +137,6 @@ def send_read_and_receive_data(fd, pos, size):
                     continue
 
                 if (length == 0):
-                    print "EOF", next_request_number
                     break
 
                 update_timeout(time.time() - stime)
@@ -153,11 +153,7 @@ def send_read_and_receive_data(fd, pos, size):
 
                 update_timeout(time.time() - stime)
 
-
     send_read.release()
-
-    print "Timeouts", timeouts
-    print len(buf)
 
     return buf
 
@@ -198,7 +194,6 @@ def mynfs_open(fname, create, cacheFreshnessT):
             stime = time.time()
 
             resend = False
-            print "Send open request"
             udp_socket.sendto(packet_req, SERVER_ADDR)
 
         try:
@@ -271,8 +266,6 @@ def mynfs_read(fd, n):
 
     if (found):
 
-        print "Start in cache"
-
         while (found and in_cache_size <= size):
             buf += data
             new_pos += packet_struct.BLOCK_SIZE
@@ -284,7 +277,6 @@ def mynfs_read(fd, n):
 
         # Update pointer
         fd_pos[fd] += len(buf)
-        print "Set fd_pos to", fd_pos[fd]
 
         return buf
 
@@ -314,25 +306,17 @@ def mynfs_read(fd, n):
 
     in_cache.append(pieces)
 
-    print "Already in cache:", in_cache
-
     for i in xrange(1, len(in_cache)):
         if (in_cache[i] > in_cache[i-1]+1):
             requests.append([packet_struct.BLOCK_SIZE*(in_cache[i-1]+1), (in_cache[i]-in_cache[i-1]-1)*packet_struct.BLOCK_SIZE])
-
-    print "Requests", requests
 
     # Then send requests for the missing parts
     for r in requests:
 
         data = send_read_and_receive_data(fd, r[0], r[1])
 
-        print "Received length", len(data)
-
         for i in xrange(r[1]/packet_struct.BLOCK_SIZE):
             received_data[i + (r[0]-new_pos)/packet_struct.BLOCK_SIZE] = data[i*packet_struct.BLOCK_SIZE: (i+1)*packet_struct.BLOCK_SIZE]
-
-    print "Buffer pieces", len(received_data)
 
     # Construct reply
     buf = ''
@@ -348,7 +332,6 @@ def mynfs_read(fd, n):
 
     # Update pointer
     fd_pos[fd] += len(buf)
-    print "Set fd_pos to", fd_pos[fd]
 
     return buf
 
@@ -382,20 +365,15 @@ def mynfs_write(fd, buf):
 
     n = len(buf)
 
-    print "Write from", pos, len(buf)
-
     # ................ PHASE 1: Find the data before and after buf so len(total_data)%BLOCK_SIZE == 0 ................ #
 
     # Find the data before the write position in the current block
     start_pos = pos/packet_struct.BLOCK_SIZE * packet_struct.BLOCK_SIZE
     start_offset = pos - start_pos
 
-    print "Block starts at", start_pos
-
     data = ""
 
     if (start_offset > 0):
-        print "Get the previous data"
         found, data = cache_API.search_block(fd, start_pos)
         if (not found):
             data = send_read_and_receive_data(fd, start_pos, packet_struct.BLOCK_SIZE)
@@ -412,7 +390,6 @@ def mynfs_write(fd, buf):
     data = ""
 
     if (end_offset > 0):
-        print "Get the next data"
         found, data = cache_API.search_block(fd, end_pos)
         if (not found):
             data = send_read_and_receive_data(fd, end_pos, packet_struct.BLOCK_SIZE)
@@ -431,8 +408,6 @@ def mynfs_write(fd, buf):
         cache_API.insert_block(fd, start_pos + i*packet_struct.BLOCK_SIZE, new_data[i*packet_struct.BLOCK_SIZE: (i+1)*packet_struct.BLOCK_SIZE], freshness[fd])
 
     # ................ PHASE 2: Send changes over network ................ #
-
-    print "Total write packets: ", num_of_packets
 
     total_sends = 0
     total_acks = 0
@@ -488,11 +463,8 @@ def mynfs_write(fd, buf):
 
                 timeouts += 1
 
-
     # update pos of fd
     fd_pos[fd] += n
-
-    print "Write complete", timeouts
 
     return n
 
@@ -517,3 +489,19 @@ def mynfs_seek(fd, pos):
         return
 
     fd_pos[fd] = pos
+
+
+"""Close a file (locally)"""
+
+
+def mynfs_close(fd):
+
+    if (fd not in fd_pos.keys()):
+        raise FileError,("Unknown file descriptor")
+        return
+
+    del fd_pos[fd]
+    del freshness[fd]
+    del last_time[fd]
+
+    return

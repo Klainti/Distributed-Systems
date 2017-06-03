@@ -21,7 +21,6 @@ def insert_block(fd, position, data, freshnessT):
     global cache_mem
 
     if (freshnessT <= 0):
-        print "Invalid freshness value"
         return
 
     update_cache_lock.acquire()
